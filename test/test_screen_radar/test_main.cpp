@@ -162,6 +162,40 @@ void test_radar_select_detail_card(void) {
   TEST_ASSERT_FALSE(screen.detailCard().present);
 }
 
+void test_parse_adsb_track_and_rate(void) {
+  const char* json =
+      "{\"ac\":[{\"hex\":\"abc\",\"flight\":\"TST1  \",\"lat\":40.0,\"lon\":-84.0,"
+      "\"alt_baro\":5200,\"gs\":106.2,\"track\":75.83,\"baro_rate\":-192}]}";
+  AircraftList list{};
+  TEST_ASSERT_TRUE(parseAdsb(json, list));
+  TEST_ASSERT_EQUAL(1, list.count);
+  TEST_ASSERT_TRUE(list.items[0].hasTrack);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 75.83f, list.items[0].trackDeg);
+  TEST_ASSERT_TRUE(list.items[0].hasBaroRate);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, -192.0f, list.items[0].baroRateFpm);
+}
+
+void test_parse_adsb_calc_track_and_geom_rate_fallback(void) {
+  const char* json =
+      "{\"ac\":[{\"hex\":\"def\",\"lat\":40.0,\"lon\":-84.0,"
+      "\"calc_track\":309,\"geom_rate\":448}]}";
+  AircraftList list{};
+  TEST_ASSERT_TRUE(parseAdsb(json, list));
+  TEST_ASSERT_TRUE(list.items[0].hasTrack);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 309.0f, list.items[0].trackDeg);
+  TEST_ASSERT_TRUE(list.items[0].hasBaroRate);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 448.0f, list.items[0].baroRateFpm);
+}
+
+void test_parse_adsb_missing_track_rate(void) {
+  const char* json =
+      "{\"ac\":[{\"hex\":\"ghi\",\"lat\":40.0,\"lon\":-84.0,\"alt_baro\":1000}]}";
+  AircraftList list{};
+  TEST_ASSERT_TRUE(parseAdsb(json, list));
+  TEST_ASSERT_FALSE(list.items[0].hasTrack);
+  TEST_ASSERT_FALSE(list.items[0].hasBaroRate);
+}
+
 void test_radar_temp_vs_pin_center(void) {
   ScreenRadar screen;
   screen.bind(loadAdsbFixture());
@@ -237,6 +271,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_filter_blips_and_offsets);
   RUN_TEST(test_radar_mode_toggle);
   RUN_TEST(test_radar_select_detail_card);
+  RUN_TEST(test_parse_adsb_track_and_rate);
+  RUN_TEST(test_parse_adsb_calc_track_and_geom_rate_fallback);
+  RUN_TEST(test_parse_adsb_missing_track_rate);
   RUN_TEST(test_radar_temp_vs_pin_center);
   return UNITY_END();
 }

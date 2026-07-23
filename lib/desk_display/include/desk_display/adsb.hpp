@@ -11,11 +11,15 @@ struct Aircraft {
   char callsign[kMaxCallsign];
   float altFt;     // barometric altitude when available; NaN if missing
   float speedKt;   // ground speed when available; NaN if missing
+  float trackDeg;  // track heading when available; NaN if missing
+  float baroRateFpm;  // vertical rate when available; NaN if missing
   double lat;
   double lon;
   bool hasPosition;
   bool hasAlt;
   bool hasSpeed;
+  bool hasTrack;
+  bool hasBaroRate;
 };
 
 struct AircraftList {

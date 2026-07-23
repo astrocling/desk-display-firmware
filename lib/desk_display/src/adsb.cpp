@@ -81,6 +81,24 @@ bool parseAdsb(const char* json, AircraftList& out) {
       item.speedKt = ac["gs"].as<float>();
     }
 
+    item.hasTrack = false;
+    if (!ac["track"].isNull()) {
+      item.hasTrack = true;
+      item.trackDeg = ac["track"].as<float>();
+    } else if (!ac["calc_track"].isNull()) {
+      item.hasTrack = true;
+      item.trackDeg = ac["calc_track"].as<float>();
+    }
+
+    item.hasBaroRate = false;
+    if (!ac["baro_rate"].isNull()) {
+      item.hasBaroRate = true;
+      item.baroRateFpm = ac["baro_rate"].as<float>();
+    } else if (!ac["geom_rate"].isNull()) {
+      item.hasBaroRate = true;
+      item.baroRateFpm = ac["geom_rate"].as<float>();
+    }
+
     item.hasPosition = false;
     if (!ac["lat"].isNull() && !ac["lon"].isNull()) {
       item.hasPosition = true;
