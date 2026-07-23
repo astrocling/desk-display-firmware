@@ -11,6 +11,7 @@
 #include "desk_display/weather.hpp"
 #include "desk_display/weather_icons.hpp"
 #include "mlb_img.hpp"
+#include "sim_http.hpp"
 #include "weather_img.hpp"
 
 #include <cstdio>
@@ -92,6 +93,7 @@ lv_obj_t* make_status_icon(lv_obj_t* parent, desk_display::TzRowStatus st) {
 bool SimApp::init() {
   load_fixtures();
   sync_clock_from_wall();
+  adsb_poll_.setHttpGet(&sim::simAdsbHttpGet, nullptr);
 
   root_ = lv_obj_create(lv_scr_act());
   lv_obj_set_size(root_, kDispW, kDispH);
@@ -715,20 +717,45 @@ void SimApp::handle_input() {
 }
 
 void SimApp::update(uint32_t elapsed_ms) {
+  using desk_display::AircraftList;
+  using desk_display::RadarMode;
+  using desk_display::Screen;
+
   static uint32_t clock_accum = 0;
   clock_accum += elapsed_ms;
   if (clock_accum >= 1000) {
     clock_accum = 0;
     sync_clock_from_wall();
-    if (nav_.active_screen() == desk_display::Screen::Clock ||
-        nav_.active_screen() == desk_display::Screen::Timezones) {
+    if (nav_.active_screen() == Screen::Clock ||
+        nav_.active_screen() == Screen::Timezones) {
       refresh_content();
     }
   }
 
   nav_.on_tick(elapsed_ms);
+
+  // Poll adsb.lol only while Radar is the active screen; sweep animation
+  // also only advances while Radar is visible.
+  const bool radar_active = nav_.active_screen() == Screen::Radar;
+  adsb_poll_.setActive(radar_active);
+  if (radar_active) {
+    radar_.onTick(elapsed_ms);
+    adsb_poll_.setCenter(radar_.centerLat(), radar_.centerLon(), radar_.rangeMiles());
+  }
+  adsb_poll_.onTick(elapsed_ms);
+
+  AircraftList fresh{};
+  const bool got_fresh = adsb_poll_.takeAircraft(fresh);
+  if (got_fresh) {
+    radar_.bind(fresh);
+  }
+
   if (nav_.active_screen() != last_screen_ || nav_.mode() != last_mode_) {
     rebuild_ui_for_active();
+  } else if (got_fresh || (radar_active && radar_.mode() == RadarMode::ClassicSweep)) {
+    // Refresh every tick while sweeping so the sweep indicator animates
+    // smoothly (well above the ≥15 Hz target at sim frame rate).
+    refresh_content();
   }
 }
 

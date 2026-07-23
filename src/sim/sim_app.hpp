@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desk_display/adsb_poll.hpp"
 #include "desk_display/nav.hpp"
 #include "desk_display/screen_clock.hpp"
 #include "desk_display/screen_radar.hpp"
@@ -34,6 +35,7 @@ class SimApp {
   desk_display::WeatherScreen weather_;
   desk_display::ScreenSports sports_;
   desk_display::ScreenRadar radar_;
+  desk_display::AdsbPoller adsb_poll_;
 
   lv_obj_t* root_ = nullptr;
   lv_obj_t* content_ = nullptr;
