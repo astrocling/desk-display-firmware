@@ -10,6 +10,7 @@
 #include "desk_display/timezones.hpp"
 #include "desk_display/weather.hpp"
 #include "desk_display/weather_icons.hpp"
+#include "weather_img.hpp"
 
 #include <cstdio>
 #include <ctime>
@@ -83,32 +84,6 @@ lv_obj_t* make_status_icon(lv_obj_t* parent, desk_display::TzRowStatus st) {
                              : desk_display::theme::kStatusAwake;
   lv_obj_set_style_bg_color(dot, rgb(color), 0);
   return dot;
-}
-
-const char* weather_icon_name(desk_display::WeatherIconId id) {
-  using desk_display::WeatherIconId;
-  switch (id) {
-    case WeatherIconId::Clear:
-      return "Clear";
-    case WeatherIconId::MostlyClear:
-      return "Mostly clear";
-    case WeatherIconId::Cloudy:
-      return "Cloudy";
-    case WeatherIconId::Fog:
-      return "Fog";
-    case WeatherIconId::Drizzle:
-      return "Drizzle";
-    case WeatherIconId::Rain:
-      return "Rain";
-    case WeatherIconId::Snow:
-      return "Snow";
-    case WeatherIconId::Showers:
-      return "Showers";
-    case WeatherIconId::Thunderstorm:
-      return "Storm";
-    default:
-      return "Wx";
-  }
 }
 
 }  // namespace
@@ -302,21 +277,6 @@ void SimApp::refresh_content() {
         lv_obj_center(lab);
         break;
       }
-      char tbuf[32];
-      std::snprintf(tbuf, sizeof(tbuf), "%.0f°", static_cast<double>(v.displayTemp));
-      lv_obj_t* temp = lv_label_create(body_);
-      lv_label_set_text(temp, tbuf);
-      lv_obj_set_style_text_font(temp, &lv_font_montserrat_28, 0);
-      lv_obj_set_style_text_color(temp, rgb(0xFFFFFF), 0);
-      lv_obj_align(temp, LV_ALIGN_CENTER, 0, -36);
-
-      char sub[64];
-      std::snprintf(sub, sizeof(sub), "%s · feels %.0f°", weather_icon_name(v.icon),
-                    static_cast<double>(v.feelsLike));
-      lv_obj_t* feels = lv_label_create(body_);
-      lv_label_set_text(feels, sub);
-      lv_obj_set_style_text_color(feels, rgb(desk_display::theme::kDim), 0);
-      lv_obj_align(feels, LV_ALIGN_CENTER, 0, 0);
 
       char hl[48];
       std::snprintf(hl, sizeof(hl), "H %.0f  L %.0f", static_cast<double>(v.todayHigh),
@@ -324,13 +284,103 @@ void SimApp::refresh_content() {
       lv_obj_t* hl_lab = lv_label_create(body_);
       lv_label_set_text(hl_lab, hl);
       lv_obj_set_style_text_color(hl_lab, rgb(desk_display::theme::kAccent), 0);
-      lv_obj_align(hl_lab, LV_ALIGN_CENTER, 0, 28);
+      lv_obj_set_style_text_font(hl_lab, &lv_font_montserrat_12, 0);
+      lv_obj_align(hl_lab, LV_ALIGN_TOP_MID, 0, 4);
+
+      lv_obj_t* when = lv_label_create(body_);
+      lv_label_set_text(when, v.whenLabel);
+      lv_obj_set_style_text_color(when, rgb(desk_display::theme::kDim), 0);
+      lv_obj_set_style_text_font(when, &lv_font_montserrat_12, 0);
+      lv_obj_align(when, LV_ALIGN_CENTER, 0, -70);
+
+      lv_obj_t* row = lv_obj_create(body_);
+      lv_obj_set_size(row, 200, 48);
+      lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+      lv_obj_set_style_border_width(row, 0, 0);
+      lv_obj_set_style_pad_all(row, 0, 0);
+      lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                            LV_FLEX_ALIGN_CENTER);
+      lv_obj_set_style_pad_column(row, 8, 0);
+      lv_obj_align(row, LV_ALIGN_CENTER, 0, -28);
+
+      lv_obj_t* icon = lv_img_create(row);
+      lv_img_set_src(icon, weatherIconImg(v.icon));
+
+      char tbuf[32];
+      std::snprintf(tbuf, sizeof(tbuf), "%.0f°", static_cast<double>(v.displayTemp));
+      lv_obj_t* temp = lv_label_create(row);
+      lv_label_set_text(temp, tbuf);
+      lv_obj_set_style_text_font(temp, &lv_font_montserrat_28, 0);
+      lv_obj_set_style_text_color(temp, rgb(0xFFFFFF), 0);
+
+      char feels_buf[32];
+      std::snprintf(feels_buf, sizeof(feels_buf), "feels %.0f°",
+                    static_cast<double>(v.feelsLike));
+      lv_obj_t* feels = lv_label_create(body_);
+      lv_label_set_text(feels, feels_buf);
+      lv_obj_set_style_text_color(feels, rgb(desk_display::theme::kDim), 0);
+      lv_obj_set_style_text_font(feels, &lv_font_montserrat_12, 0);
+      lv_obj_align(feels, LV_ALIGN_CENTER, 0, 10);
 
       if (v.alertBadge) {
         lv_obj_t* alert = lv_label_create(body_);
         lv_label_set_text(alert, v.alertDetailOpen && v.alertHeadline ? v.alertHeadline : "ALERT");
         lv_obj_set_style_text_color(alert, rgb(desk_display::theme::kAlert), 0);
-        lv_obj_align(alert, LV_ALIGN_BOTTOM_MID, 0, -8);
+        lv_obj_set_style_text_font(alert, &lv_font_montserrat_12, 0);
+        lv_obj_align(alert, LV_ALIGN_CENTER, 0, 36);
+      }
+
+      // Hourly strip along the bottom
+      lv_obj_t* strip = lv_obj_create(body_);
+      lv_obj_set_size(strip, 280, 70);
+      lv_obj_set_style_bg_opa(strip, LV_OPA_TRANSP, 0);
+      lv_obj_set_style_border_width(strip, 0, 0);
+      lv_obj_set_style_pad_all(strip, 0, 0);
+      lv_obj_clear_flag(strip, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                            LV_FLEX_ALIGN_CENTER);
+      lv_obj_align(strip, LV_ALIGN_BOTTOM_MID, 0, -4);
+
+      for (std::size_t i = 0; i < v.stripCount; ++i) {
+        const auto& slot = v.strip[i];
+        if (!slot.valid) {
+          continue;
+        }
+        lv_obj_t* cell = lv_obj_create(strip);
+        lv_obj_set_size(cell, 48, 66);
+        lv_obj_set_style_radius(cell, 6, 0);
+        lv_obj_set_style_border_width(cell, 0, 0);
+        lv_obj_set_style_pad_all(cell, 2, 0);
+        lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+        if (slot.selected) {
+          lv_obj_set_style_bg_color(cell, rgb(desk_display::theme::kAccent), 0);
+          lv_obj_set_style_bg_opa(cell, LV_OPA_30, 0);
+        } else {
+          lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
+        }
+        lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_row(cell, 2, 0);
+
+        lv_obj_t* simg = lv_img_create(cell);
+        lv_img_set_src(simg, weatherIconImg(slot.icon));
+        lv_img_set_zoom(simg, 102);  // ~16px from 40px (256 = 100%)
+
+        lv_obj_t* hour_lab = lv_label_create(cell);
+        lv_label_set_text(hour_lab, slot.hourDigit);
+        lv_obj_set_style_text_font(hour_lab, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(hour_lab, rgb(desk_display::theme::kDim), 0);
+
+        char st[16];
+        std::snprintf(st, sizeof(st), "%.0f°", static_cast<double>(slot.temp));
+        lv_obj_t* stemp = lv_label_create(cell);
+        lv_label_set_text(stemp, st);
+        lv_obj_set_style_text_font(stemp, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(stemp, rgb(0xFFFFFF), 0);
       }
       break;
     }

@@ -33,6 +33,7 @@
 #define LV_USE_LABEL 1
 #define LV_USE_BTN 1
 #define LV_USE_IMG 1
+#define LV_USE_FLEX 1
 #define LV_USE_ARC 1
 #define LV_USE_LINE 1
 #define LV_USE_KEYBOARD 1
