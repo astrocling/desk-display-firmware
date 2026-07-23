@@ -158,6 +158,51 @@ void test_clear_returns_not_ready(void) {
   TEST_ASSERT_FALSE(g_screen.view().ready);
 }
 
+void test_when_label_current_and_hourly(void) {
+  TEST_ASSERT_TRUE(loadFixture("weather.json", g_buf, sizeof(g_buf)));
+  Weather w{};
+  TEST_ASSERT_TRUE(parseWeather(g_buf, w));
+  TEST_ASSERT_TRUE(w.hourlyCount >= 1);
+  g_screen.bind(w);
+
+  WeatherScreenView v = g_screen.view();
+  TEST_ASSERT_EQUAL_STRING("Current", v.whenLabel);
+
+  g_screen.onRotate(1);
+  v = g_screen.view();
+  TEST_ASSERT_FALSE(v.showingNow);
+  // Fixture first hour is 18:00 → "6 PM"
+  TEST_ASSERT_EQUAL_STRING("6 PM", v.whenLabel);
+}
+
+void test_strip_window_now_and_scrub(void) {
+  TEST_ASSERT_TRUE(loadFixture("weather.json", g_buf, sizeof(g_buf)));
+  Weather w{};
+  TEST_ASSERT_TRUE(parseWeather(g_buf, w));
+  TEST_ASSERT_TRUE(w.hourlyCount >= 5);
+  g_screen.bind(w);
+
+  WeatherScreenView v = g_screen.view();
+  TEST_ASSERT_EQUAL(5, static_cast<int>(v.stripCount));
+  TEST_ASSERT_TRUE(v.strip[0].valid);
+  TEST_ASSERT_FALSE(v.strip[0].selected);  // Now: no hourly slot selected
+  TEST_ASSERT_FLOAT_WITHIN(0.05f, w.hourly[0].temp, v.strip[0].temp);
+
+  g_screen.onRotate(1);  // scrub index 0
+  v = g_screen.view();
+  TEST_ASSERT_TRUE(v.strip[0].selected);
+  TEST_ASSERT_FALSE(v.strip[1].selected);
+  TEST_ASSERT_EQUAL_STRING("6", v.strip[0].hourDigit);
+
+  // Jump near end — window clamps, last slot selected
+  g_screen.onRotate(static_cast<int>(w.hourlyCount) + 10);
+  v = g_screen.view();
+  TEST_ASSERT_EQUAL(5, static_cast<int>(v.stripCount));
+  TEST_ASSERT_TRUE(v.strip[4].selected);
+  const std::size_t last = w.hourlyCount - 1;
+  TEST_ASSERT_FLOAT_WITHIN(0.05f, w.hourly[last].temp, v.strip[4].temp);
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -170,5 +215,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_alert_absent_on_fixture);
   RUN_TEST(test_alert_present_open_detail);
   RUN_TEST(test_clear_returns_not_ready);
+  RUN_TEST(test_when_label_current_and_hourly);
+  RUN_TEST(test_strip_window_now_and_scrub);
   return UNITY_END();
 }
