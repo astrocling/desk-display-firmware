@@ -1,6 +1,9 @@
 #pragma once
 
 #include "desk_display/nav.hpp"
+#include "desk_display/screen_radar.hpp"
+
+#include <cstdint>
 
 namespace desk_display {
 
@@ -32,6 +35,11 @@ void screen_radar_create();
 void screen_radar_destroy();
 void screen_radar_show();
 void screen_radar_hide();
+
+/** Bind the live view-model; dial's strong impl renders from it on show(). */
+void screen_radar_bind_model(ScreenRadar* model);
+/** Forward elapsed ms to the bound model's sweep animation (no-op if stub). */
+void screen_radar_on_tick(uint32_t elapsed_ms);
 
 struct ScreenOps {
   void (*create)();

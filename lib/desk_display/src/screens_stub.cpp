@@ -22,10 +22,15 @@ void screen_sports_destroy() {}
 void screen_sports_show() {}
 void screen_sports_hide() {}
 
-void screen_radar_create() {}
-void screen_radar_destroy() {}
-void screen_radar_show() {}
-void screen_radar_hide() {}
+// Radar has a strong LVGL implementation in src/ui/screen_radar_lvgl.cpp
+// (sim + dial). These weak no-ops satisfy the ScreenOps registry for
+// native tests and any build that doesn't link src/ui/.
+__attribute__((weak)) void screen_radar_create() {}
+__attribute__((weak)) void screen_radar_destroy() {}
+__attribute__((weak)) void screen_radar_show() {}
+__attribute__((weak)) void screen_radar_hide() {}
+__attribute__((weak)) void screen_radar_bind_model(ScreenRadar*) {}
+__attribute__((weak)) void screen_radar_on_tick(uint32_t) {}
 
 namespace {
 
