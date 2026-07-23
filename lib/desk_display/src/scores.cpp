@@ -126,6 +126,30 @@ bool parseScores(const char* json, Scores& out) {
             mlb["standingLine"].as<const char*>());
   }
 
+  out.mlb.hasTeamAbbr = false;
+  if (!mlb["teamAbbr"].isNull() && mlb["teamAbbr"].is<const char*>()) {
+    out.mlb.hasTeamAbbr = true;
+    copyStr(out.mlb.teamAbbr, sizeof(out.mlb.teamAbbr),
+            mlb["teamAbbr"].as<const char*>());
+  }
+
+  out.mlb.hasOpponentAbbr = false;
+  if (!mlb["opponentAbbr"].isNull() && mlb["opponentAbbr"].is<const char*>()) {
+    out.mlb.hasOpponentAbbr = true;
+    copyStr(out.mlb.opponentAbbr, sizeof(out.mlb.opponentAbbr),
+            mlb["opponentAbbr"].as<const char*>());
+  }
+
+  out.mlb.homeAway = MlbHomeAway::Unknown;
+  if (!mlb["homeAway"].isNull() && mlb["homeAway"].is<const char*>()) {
+    const char* ha = mlb["homeAway"].as<const char*>();
+    if (std::strcmp(ha, "home") == 0) {
+      out.mlb.homeAway = MlbHomeAway::Home;
+    } else if (std::strcmp(ha, "away") == 0) {
+      out.mlb.homeAway = MlbHomeAway::Away;
+    }
+  }
+
   if (doc["flagstand"].is<JsonObjectConst>()) {
     JsonObjectConst fs = doc["flagstand"].as<JsonObjectConst>();
     if (!fs["lastResult"].isNull() && fs["lastResult"].is<JsonObjectConst>()) {
