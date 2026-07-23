@@ -73,11 +73,52 @@ void test_parse_scores_fixture(void) {
   TEST_ASSERT_FALSE(s.mlb.live);
   TEST_ASSERT_FALSE(s.mlb.hasScore);
   TEST_ASSERT_TRUE(s.mlb.hasNextGame);
+  TEST_ASSERT_TRUE(s.mlb.hasMatchup);
+  TEST_ASSERT_EQUAL_STRING("Astros @ White Sox", s.mlb.matchup);
+  TEST_ASSERT_TRUE(s.mlb.hasWhenEt);
+  TEST_ASSERT_EQUAL_STRING("Fri 7/24 7:40 PM", s.mlb.whenEt);
+  TEST_ASSERT_TRUE(s.mlb.hasRecord);
+  TEST_ASSERT_EQUAL_STRING("50-54", s.mlb.record);
+  TEST_ASSERT_TRUE(s.mlb.hasStandingLine);
+  TEST_ASSERT_EQUAL_STRING("3rd AL West · 2 GB", s.mlb.standingLine);
+  TEST_ASSERT_TRUE(s.mlb.hasTeamAbbr);
+  TEST_ASSERT_EQUAL_STRING("HOU", s.mlb.teamAbbr);
+  TEST_ASSERT_TRUE(s.mlb.hasOpponentAbbr);
+  TEST_ASSERT_EQUAL_STRING("CHW", s.mlb.opponentAbbr);
+  TEST_ASSERT_EQUAL(static_cast<int>(MlbHomeAway::Away),
+                    static_cast<int>(s.mlb.homeAway));
   TEST_ASSERT_TRUE(s.flagstand.lastResult.present);
   TEST_ASSERT_EQUAL_STRING("Round 8", s.flagstand.lastResult.name);
   TEST_ASSERT_TRUE(s.flagstand.lastResult.hasTrackName);
   TEST_ASSERT_FALSE(s.flagstand.nextRace.present);
   TEST_ASSERT_TRUE(s.hasUpdatedAt);
+}
+
+void test_parse_scores_home_away_home(void) {
+  const char* json =
+      R"({"mlb":{"live":false,"score":null,"inning":null,"nextGame":null,)"
+      R"("matchup":"Astros @ White Sox","whenEt":"Fri 7/24 7:40 PM",)"
+      R"("record":"50-54","standingLine":"3rd AL West · 2 GB",)"
+      R"("teamAbbr":"HOU","opponentAbbr":"CHW","homeAway":"home"},)"
+      R"("flagstand":{"lastResult":null,"nextRace":null}})";
+
+  Scores s{};
+  TEST_ASSERT_TRUE(parseScores(json, s));
+  TEST_ASSERT_EQUAL(static_cast<int>(MlbHomeAway::Home),
+                    static_cast<int>(s.mlb.homeAway));
+}
+
+void test_parse_scores_abbrs_optional(void) {
+  const char* json =
+      R"({"mlb":{"live":true,"score":"4-2","inning":"Top 7","nextGame":null},)"
+      R"("flagstand":{"lastResult":null,"nextRace":null}})";
+
+  Scores s{};
+  TEST_ASSERT_TRUE(parseScores(json, s));
+  TEST_ASSERT_FALSE(s.mlb.hasTeamAbbr);
+  TEST_ASSERT_FALSE(s.mlb.hasOpponentAbbr);
+  TEST_ASSERT_EQUAL(static_cast<int>(MlbHomeAway::Unknown),
+                    static_cast<int>(s.mlb.homeAway));
 }
 
 void test_parse_scores_flagstand_next_with_status(void) {
@@ -142,6 +183,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_parse_weather_rejects_bad);
   RUN_TEST(test_parse_timezones_fixture);
   RUN_TEST(test_parse_scores_fixture);
+  RUN_TEST(test_parse_scores_home_away_home);
+  RUN_TEST(test_parse_scores_abbrs_optional);
   RUN_TEST(test_parse_scores_flagstand_next_with_status);
   RUN_TEST(test_parse_airport_fixture);
   RUN_TEST(test_parse_adsb_fixture);

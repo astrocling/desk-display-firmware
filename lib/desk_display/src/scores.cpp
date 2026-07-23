@@ -98,6 +98,58 @@ bool parseScores(const char* json, Scores& out) {
             mlb["nextGame"].as<const char*>());
   }
 
+  out.mlb.hasMatchup = false;
+  if (!mlb["matchup"].isNull() && mlb["matchup"].is<const char*>()) {
+    out.mlb.hasMatchup = true;
+    copyStr(out.mlb.matchup, sizeof(out.mlb.matchup),
+            mlb["matchup"].as<const char*>());
+  }
+
+  out.mlb.hasWhenEt = false;
+  if (!mlb["whenEt"].isNull() && mlb["whenEt"].is<const char*>()) {
+    out.mlb.hasWhenEt = true;
+    copyStr(out.mlb.whenEt, sizeof(out.mlb.whenEt),
+            mlb["whenEt"].as<const char*>());
+  }
+
+  out.mlb.hasRecord = false;
+  if (!mlb["record"].isNull() && mlb["record"].is<const char*>()) {
+    out.mlb.hasRecord = true;
+    copyStr(out.mlb.record, sizeof(out.mlb.record),
+            mlb["record"].as<const char*>());
+  }
+
+  out.mlb.hasStandingLine = false;
+  if (!mlb["standingLine"].isNull() && mlb["standingLine"].is<const char*>()) {
+    out.mlb.hasStandingLine = true;
+    copyStr(out.mlb.standingLine, sizeof(out.mlb.standingLine),
+            mlb["standingLine"].as<const char*>());
+  }
+
+  out.mlb.hasTeamAbbr = false;
+  if (!mlb["teamAbbr"].isNull() && mlb["teamAbbr"].is<const char*>()) {
+    out.mlb.hasTeamAbbr = true;
+    copyStr(out.mlb.teamAbbr, sizeof(out.mlb.teamAbbr),
+            mlb["teamAbbr"].as<const char*>());
+  }
+
+  out.mlb.hasOpponentAbbr = false;
+  if (!mlb["opponentAbbr"].isNull() && mlb["opponentAbbr"].is<const char*>()) {
+    out.mlb.hasOpponentAbbr = true;
+    copyStr(out.mlb.opponentAbbr, sizeof(out.mlb.opponentAbbr),
+            mlb["opponentAbbr"].as<const char*>());
+  }
+
+  out.mlb.homeAway = MlbHomeAway::Unknown;
+  if (!mlb["homeAway"].isNull() && mlb["homeAway"].is<const char*>()) {
+    const char* ha = mlb["homeAway"].as<const char*>();
+    if (std::strcmp(ha, "home") == 0) {
+      out.mlb.homeAway = MlbHomeAway::Home;
+    } else if (std::strcmp(ha, "away") == 0) {
+      out.mlb.homeAway = MlbHomeAway::Away;
+    }
+  }
+
   if (doc["flagstand"].is<JsonObjectConst>()) {
     JsonObjectConst fs = doc["flagstand"].as<JsonObjectConst>();
     if (!fs["lastResult"].isNull() && fs["lastResult"].is<JsonObjectConst>()) {
