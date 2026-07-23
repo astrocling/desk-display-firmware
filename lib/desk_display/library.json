@@ -1,0 +1,17 @@
+{
+  "name": "desk_display",
+  "version": "0.1.0",
+  "description": "Pure data-plane models, parsers, and domain logic for Desk Display",
+  "keywords": "desk-display, json, weather, adsb",
+  "authors": {
+    "name": "Desk Display"
+  },
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "bblanchon/ArduinoJson": "^7"
+  },
+  "build": {
+    "includeDir": "include"
+  }
+}

@@ -1,0 +1,95 @@
+#pragma once
+
+#include "desk_display/scores.hpp"
+
+#include <cstddef>
+#include <cstdint>
+
+namespace desk_display {
+
+/** Only MLB + Flagstand in this phase (no WoO / High Limit / USAC slots). */
+enum class SportsCard : uint8_t {
+  Mlb = 0,
+  Flagstand = 1,
+};
+
+constexpr std::size_t kSportsCardCount = 2;
+constexpr std::size_t kSportsSummaryLen = 128;
+
+/** Compact MLB card for list / summary mode. */
+struct SportsMlbView {
+  bool live;
+  char primary[kSportsSummaryLen];    // live: score; else: nextGame time
+  char secondary[kSportsSummaryLen];  // live: inning; else: empty
+  bool hasScore;
+  bool hasInning;
+  bool hasNextGame;
+  char score[kMaxScoreStr];
+  char inning[kMaxInningStr];
+  char nextGame[kMaxIsoStr];
+};
+
+/** Compact Flagstand card: last result + optional next race. */
+struct SportsFlagstandView {
+  bool hasLastResult;
+  char lastResultSummary[kSportsSummaryLen];
+  bool hasNextRace;
+  char nextRaceSummary[kSportsSummaryLen];
+  FlagstandRace lastResult;
+  FlagstandRace nextRace;
+};
+
+/** Snapshot the UI layer will render (no LVGL). */
+struct SportsView {
+  bool ready;
+  bool detail;
+  SportsCard card;
+  SportsMlbView mlb;
+  SportsFlagstandView flagstand;
+};
+
+/**
+ * Sports screen view-model: rotate MLB ↔ Flagstand, tap for detail.
+ * Center-tap (back to carousel) is owned by Nav — not handled here.
+ */
+class ScreenSports {
+ public:
+  ScreenSports();
+
+  void reset();
+
+  /** Bind parsed scores. Marks screen ready. */
+  void bind(const Scores& scores);
+
+  /** Clear bound data; not ready until bind again. */
+  void unbind();
+
+  bool ready() const { return ready_; }
+  bool detail() const { return detail_; }
+  SportsCard card() const { return card_; }
+  const Scores& scores() const { return scores_; }
+
+  /** Encoder rotate while focused: cycle MLB ↔ Flagstand. */
+  void onRotate(int delta);
+
+  /** Tap current card → enter detail mode (richer fields via view()). */
+  void onTap();
+
+  /** Leave detail mode back to card summary. */
+  void exitDetail();
+
+  SportsView view() const;
+
+ private:
+  void fillMlbView(SportsMlbView& out) const;
+  void fillFlagstandView(SportsFlagstandView& out) const;
+  static void formatRaceSummary(char* dest, std::size_t destLen,
+                                const FlagstandRace& race);
+
+  bool ready_;
+  bool detail_;
+  SportsCard card_;
+  Scores scores_;
+};
+
+}  // namespace desk_display

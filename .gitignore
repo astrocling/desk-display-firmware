@@ -1,0 +1,43 @@
+# Local secrets / machine-specific config
+include/config.h
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+credentials.json
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+build/
+dist/
+*.bin
+*.elf
+*.hex
+*.map
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.out
+
+# Python / tooling
+__pycache__/
+*.pyc
+.Python
+venv/
+.venv/
