@@ -14,6 +14,8 @@
 #include "sim_http.hpp"
 #include "weather_img.hpp"
 
+#include "../ui/radar_lvgl.hpp"
+
 #include <cstdio>
 #include <ctime>
 #include <cstring>
@@ -525,48 +527,7 @@ void SimApp::refresh_content() {
       break;
     }
     case Screen::Radar: {
-      const auto v = radar_.view();
-      lv_obj_t* ring = lv_arc_create(body_);
-      lv_obj_set_size(ring, 240, 240);
-      lv_obj_center(ring);
-      lv_arc_set_bg_angles(ring, 0, 360);
-      lv_obj_remove_style(ring, nullptr, LV_PART_KNOB);
-      lv_obj_clear_flag(ring, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_set_style_arc_width(ring, 1, LV_PART_MAIN);
-      lv_obj_set_style_arc_color(ring, rgb(desk_display::theme::kDim), LV_PART_MAIN);
-
-      char hdr[48];
-      std::snprintf(hdr, sizeof(hdr), "%s · %.0f mi · %zu",
-                    v.mode == desk_display::RadarMode::ClassicSweep ? "Sweep" : "Detail",
-                    static_cast<double>(v.rangeMiles), v.blipCount);
-      lv_obj_t* hdr_lab = lv_label_create(body_);
-      lv_label_set_text(hdr_lab, hdr);
-      lv_obj_set_style_text_font(hdr_lab, &lv_font_montserrat_12, 0);
-      lv_obj_set_style_text_color(hdr_lab, rgb(desk_display::theme::kDim), 0);
-      lv_obj_align(hdr_lab, LV_ALIGN_TOP_MID, 0, 4);
-
-      const float scale = 110.0f / (v.rangeMiles > 0 ? v.rangeMiles : 1.0f);
-      for (std::size_t i = 0; i < v.blipCount && i < 40; ++i) {
-        const auto& b = v.blips[i];
-        lv_obj_t* dot = lv_obj_create(body_);
-        lv_obj_set_size(dot, 6, 6);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(dot, rgb(0x3DFF7A), 0);
-        lv_obj_set_style_border_width(dot, 0, 0);
-        lv_obj_set_style_pad_all(dot, 0, 0);
-        const lv_coord_t x = static_cast<lv_coord_t>(b.offsetXMi * scale);
-        const lv_coord_t y = static_cast<lv_coord_t>(-b.offsetYMi * scale);
-        lv_obj_align(dot, LV_ALIGN_CENTER, x, y);
-      }
-
-      if (v.hasSelection && v.detail.present) {
-        char card[64];
-        std::snprintf(card, sizeof(card), "%s", v.detail.callsign);
-        lv_obj_t* c = lv_label_create(body_);
-        lv_label_set_text(c, card);
-        lv_obj_set_style_text_color(c, rgb(desk_display::theme::kAccent), 0);
-        lv_obj_align(c, LV_ALIGN_BOTTOM_MID, 0, -8);
-      }
+      desk_ui::radar_lvgl_build(body_, radar_.view());
       break;
     }
     default:
