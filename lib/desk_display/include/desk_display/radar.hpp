@@ -8,6 +8,12 @@ constexpr float kRadarRangeMaxMi = 50.0f;
 /** Clamp radar range to 5–50 miles. */
 float clampRadarRangeMiles(float rangeMiles);
 
+/** Convert statute miles to nautical miles. */
+float statuteMilesToNauticalMiles(float statuteMi);
+
+/** Clamp ADS-B query radius to [1, 250] nautical miles. */
+float clampAdsbQueryRadiusNm(float nm);
+
 /**
  * Equirectangular relative offset of aircraft from center, in miles.
  * +x = east, +y = north.

@@ -1,8 +1,10 @@
 #include <unity.h>
 
 #include <cmath>
+#include <cstring>
 
 #include "desk_display/adsb.hpp"
+#include "desk_display/adsb_poll.hpp"
 #include "desk_display/format_time.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/radar_format.hpp"
@@ -149,6 +151,46 @@ void test_format_radar_tag_line2_omits_missing(void) {
   TEST_ASSERT_FALSE(formatRadarTagLine2(buf, sizeof(buf), empty));
 }
 
+void test_statute_to_nm_and_url(void) {
+  TEST_ASSERT_FLOAT_WITHIN(0.05f, 21.7244f, statuteMilesToNauticalMiles(25.0f));
+  char url[160];
+  TEST_ASSERT_TRUE(buildAdsbLolUrl(url, sizeof(url), 40.03353, -84.19588, 25.0f));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "api.adsb.lol/v2/lat/"));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "/lon/"));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "/dist/"));
+}
+
+static int g_http_calls;
+static bool fake_http(const char* url, char* body, std::size_t cap,
+                      std::size_t& len, void*) {
+  (void)url;
+  ++g_http_calls;
+  const char* json =
+      "{\"ac\":[{\"hex\":\"a\",\"flight\":\"P1\",\"lat\":40.03,\"lon\":-84.19,"
+      "\"alt_baro\":1000,\"gs\":100,\"track\":90}]}";
+  len = std::strlen(json);
+  if (len + 1 > cap) return false;
+  std::memcpy(body, json, len + 1);
+  return true;
+}
+
+void test_adsb_poller_only_when_active(void) {
+  g_http_calls = 0;
+  AdsbPoller poll;
+  poll.setHttpGet(fake_http, nullptr);
+  poll.setCenter(40.03353, -84.19588, 25.0f);
+  poll.setActive(false);
+  poll.onTick(15000);
+  TEST_ASSERT_EQUAL(0, g_http_calls);
+  poll.setActive(true);
+  poll.onTick(10000);
+  TEST_ASSERT_EQUAL(1, g_http_calls);
+  AircraftList list{};
+  TEST_ASSERT_TRUE(poll.takeAircraft(list));
+  TEST_ASSERT_EQUAL(1, list.count);
+  TEST_ASSERT_FALSE(poll.takeAircraft(list));
+}
+
 void test_radar_offset_and_distance(void) {
   float x = 0.0f;
   float y = 0.0f;
@@ -187,5 +229,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_trend_deadband);
   RUN_TEST(test_format_radar_tag_line2_omits_missing);
   RUN_TEST(test_radar_offset_and_distance);
+  RUN_TEST(test_statute_to_nm_and_url);
+  RUN_TEST(test_adsb_poller_only_when_active);
   return UNITY_END();
 }

@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "desk_display/adsb.hpp"
+#include "desk_display/adsb_poll.hpp"
 #include "desk_display/airport.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/screen_radar.hpp"
@@ -241,6 +242,15 @@ void test_radar_bind_clears_selection_when_gone(void) {
   TEST_ASSERT_FALSE(screen.hasSelection());
 }
 
+void test_adsb_url_from_radar_home(void) {
+  char url[160];
+  TEST_ASSERT_TRUE(buildAdsbLolUrl(url, sizeof(url), kRadarHomeLat, kRadarHomeLon,
+                                 kRadarDefaultRangeMi));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "api.adsb.lol/v2/lat/"));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "/lon/"));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "/dist/"));
+}
+
 void test_radar_temp_vs_pin_center(void) {
   ScreenRadar screen;
   screen.bind(loadAdsbFixture());
@@ -323,5 +333,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_bind_preserves_selection_by_callsign);
   RUN_TEST(test_radar_bind_clears_selection_when_gone);
   RUN_TEST(test_radar_temp_vs_pin_center);
+  RUN_TEST(test_adsb_url_from_radar_home);
   return UNITY_END();
 }

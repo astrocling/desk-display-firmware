@@ -20,6 +20,20 @@ float clampRadarRangeMiles(float rangeMiles) {
   return rangeMiles;
 }
 
+float statuteMilesToNauticalMiles(float statuteMi) {
+  return statuteMi * 0.868976f;
+}
+
+float clampAdsbQueryRadiusNm(float nm) {
+  if (nm < 1.0f) {
+    return 1.0f;
+  }
+  if (nm > 250.0f) {
+    return 250.0f;
+  }
+  return nm;
+}
+
 void aircraftOffsetMiles(double centerLat, double centerLon, double acLat,
                          double acLon, float& outXMi, float& outYMi) {
   const double latRad = centerLat * kDegToRad;
