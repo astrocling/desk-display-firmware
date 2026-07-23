@@ -55,6 +55,15 @@ void test_bind_fixture_ready_mlb_next_game(void) {
   TEST_ASSERT_EQUAL_STRING("50-54", v.mlb.record);
   // View normalizes U+00B7 to ASCII hyphen for LVGL fonts.
   TEST_ASSERT_EQUAL_STRING("3rd AL West - 2 GB", v.mlb.standingLine);
+  TEST_ASSERT_TRUE(v.mlb.hasTeamAbbr);
+  TEST_ASSERT_EQUAL_STRING("HOU", v.mlb.teamAbbr);
+  TEST_ASSERT_TRUE(v.mlb.hasOpponentAbbr);
+  TEST_ASSERT_EQUAL_STRING("CHW", v.mlb.opponentAbbr);
+  TEST_ASSERT_EQUAL(static_cast<int>(MlbHomeAway::Away),
+                    static_cast<int>(v.mlb.homeAway));
+  TEST_ASSERT_TRUE(v.mlb.hasConnector);
+  TEST_ASSERT_EQUAL_STRING("@", v.mlb.connector);
+  TEST_ASSERT_TRUE(v.mlb.showLogoHero);
 }
 
 void test_rotate_mlb_flagstand_cycle(void) {
@@ -105,6 +114,7 @@ void test_mlb_live_score_and_inning(void) {
   TEST_ASSERT_EQUAL_STRING("Top 7", v.mlb.secondary);
   TEST_ASSERT_EQUAL_STRING("4-2", v.mlb.score);
   TEST_ASSERT_EQUAL_STRING("Top 7", v.mlb.inning);
+  TEST_ASSERT_FALSE(v.mlb.showLogoHero);
 }
 
 void test_flagstand_next_race_when_present(void) {

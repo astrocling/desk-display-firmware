@@ -129,6 +129,21 @@ void ScreenSports::fillMlbView(SportsMlbView& out) const {
   copyStr(out.record, sizeof(out.record), m.record);
   copyStandingLineForDisplay(out.standingLine, sizeof(out.standingLine),
                              m.standingLine);
+  out.hasTeamAbbr = m.hasTeamAbbr;
+  copyStr(out.teamAbbr, sizeof(out.teamAbbr), m.teamAbbr);
+  out.hasOpponentAbbr = m.hasOpponentAbbr;
+  copyStr(out.opponentAbbr, sizeof(out.opponentAbbr), m.opponentAbbr);
+  out.homeAway = m.homeAway;
+  out.hasConnector = false;
+  out.connector[0] = '\0';
+  if (m.homeAway == MlbHomeAway::Away) {
+    out.hasConnector = true;
+    copyStr(out.connector, sizeof(out.connector), "@");
+  } else if (m.homeAway == MlbHomeAway::Home) {
+    out.hasConnector = true;
+    copyStr(out.connector, sizeof(out.connector), "vs");
+  }
+  out.showLogoHero = !m.live && m.hasTeamAbbr && m.hasOpponentAbbr;
 
   if (m.live) {
     if (m.hasScore) {

@@ -35,6 +35,14 @@ struct SportsMlbView {
   char whenEt[kMaxMlbWhenEt];
   char record[kMaxMlbRecord];
   char standingLine[kMaxMlbStanding];
+  bool hasTeamAbbr;
+  char teamAbbr[kMaxMlbAbbr];
+  bool hasOpponentAbbr;
+  char opponentAbbr[kMaxMlbAbbr];
+  MlbHomeAway homeAway;
+  bool hasConnector;
+  char connector[4];
+  bool showLogoHero;
 };
 
 /** Compact Flagstand card: last result + optional next race. */
