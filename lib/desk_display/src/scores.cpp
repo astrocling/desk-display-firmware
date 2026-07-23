@@ -98,6 +98,34 @@ bool parseScores(const char* json, Scores& out) {
             mlb["nextGame"].as<const char*>());
   }
 
+  out.mlb.hasMatchup = false;
+  if (!mlb["matchup"].isNull() && mlb["matchup"].is<const char*>()) {
+    out.mlb.hasMatchup = true;
+    copyStr(out.mlb.matchup, sizeof(out.mlb.matchup),
+            mlb["matchup"].as<const char*>());
+  }
+
+  out.mlb.hasWhenEt = false;
+  if (!mlb["whenEt"].isNull() && mlb["whenEt"].is<const char*>()) {
+    out.mlb.hasWhenEt = true;
+    copyStr(out.mlb.whenEt, sizeof(out.mlb.whenEt),
+            mlb["whenEt"].as<const char*>());
+  }
+
+  out.mlb.hasRecord = false;
+  if (!mlb["record"].isNull() && mlb["record"].is<const char*>()) {
+    out.mlb.hasRecord = true;
+    copyStr(out.mlb.record, sizeof(out.mlb.record),
+            mlb["record"].as<const char*>());
+  }
+
+  out.mlb.hasStandingLine = false;
+  if (!mlb["standingLine"].isNull() && mlb["standingLine"].is<const char*>()) {
+    out.mlb.hasStandingLine = true;
+    copyStr(out.mlb.standingLine, sizeof(out.mlb.standingLine),
+            mlb["standingLine"].as<const char*>());
+  }
+
   if (doc["flagstand"].is<JsonObjectConst>()) {
     JsonObjectConst fs = doc["flagstand"].as<JsonObjectConst>();
     if (!fs["lastResult"].isNull() && fs["lastResult"].is<JsonObjectConst>()) {

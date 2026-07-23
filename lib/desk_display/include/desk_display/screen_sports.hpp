@@ -19,14 +19,22 @@ constexpr std::size_t kSportsSummaryLen = 128;
 /** Compact MLB card for list / summary mode. */
 struct SportsMlbView {
   bool live;
-  char primary[kSportsSummaryLen];    // live: score; else: nextGame time
-  char secondary[kSportsSummaryLen];  // live: inning; else: empty
+  char primary[kSportsSummaryLen];    // live: score; else: matchup (fallback nextGame)
+  char secondary[kSportsSummaryLen];  // live: inning; else: whenEt
   bool hasScore;
   bool hasInning;
   bool hasNextGame;
+  bool hasMatchup;
+  bool hasWhenEt;
+  bool hasRecord;
+  bool hasStandingLine;
   char score[kMaxScoreStr];
   char inning[kMaxInningStr];
   char nextGame[kMaxIsoStr];
+  char matchup[kMaxMlbMatchup];
+  char whenEt[kMaxMlbWhenEt];
+  char record[kMaxMlbRecord];
+  char standingLine[kMaxMlbStanding];
 };
 
 /** Compact Flagstand card: last result + optional next race. */

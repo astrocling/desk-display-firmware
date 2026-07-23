@@ -30,6 +30,14 @@ void test_bind_fixture_ready_mlb_next_game(void) {
 
   Scores s{};
   TEST_ASSERT_TRUE(parseScores(g_buf, s));
+  TEST_ASSERT_TRUE(s.mlb.hasMatchup);
+  TEST_ASSERT_EQUAL_STRING("Astros @ White Sox", s.mlb.matchup);
+  TEST_ASSERT_TRUE(s.mlb.hasWhenEt);
+  TEST_ASSERT_EQUAL_STRING("Fri 7/24 7:40 PM", s.mlb.whenEt);
+  TEST_ASSERT_TRUE(s.mlb.hasRecord);
+  TEST_ASSERT_EQUAL_STRING("50-54", s.mlb.record);
+  TEST_ASSERT_TRUE(s.mlb.hasStandingLine);
+  TEST_ASSERT_EQUAL_STRING("3rd AL West · 2 GB", s.mlb.standingLine);
 
   g_screen.bind(s);
   TEST_ASSERT_TRUE(g_screen.ready());
@@ -40,9 +48,13 @@ void test_bind_fixture_ready_mlb_next_game(void) {
   TEST_ASSERT_TRUE(v.ready);
   TEST_ASSERT_FALSE(v.mlb.live);
   TEST_ASSERT_TRUE(v.mlb.hasNextGame);
-  TEST_ASSERT_EQUAL_STRING("2026-07-24T23:40Z", v.mlb.primary);
-  TEST_ASSERT_EQUAL_STRING("", v.mlb.secondary);
+  TEST_ASSERT_TRUE(v.mlb.hasMatchup);
+  TEST_ASSERT_EQUAL_STRING("Astros @ White Sox", v.mlb.primary);
+  TEST_ASSERT_EQUAL_STRING("Fri 7/24 7:40 PM", v.mlb.secondary);
   TEST_ASSERT_EQUAL_STRING("2026-07-24T23:40Z", v.mlb.nextGame);
+  TEST_ASSERT_EQUAL_STRING("50-54", v.mlb.record);
+  // View normalizes U+00B7 to ASCII hyphen for LVGL fonts.
+  TEST_ASSERT_EQUAL_STRING("3rd AL West - 2 GB", v.mlb.standingLine);
 }
 
 void test_rotate_mlb_flagstand_cycle(void) {

@@ -73,6 +73,14 @@ void test_parse_scores_fixture(void) {
   TEST_ASSERT_FALSE(s.mlb.live);
   TEST_ASSERT_FALSE(s.mlb.hasScore);
   TEST_ASSERT_TRUE(s.mlb.hasNextGame);
+  TEST_ASSERT_TRUE(s.mlb.hasMatchup);
+  TEST_ASSERT_EQUAL_STRING("Astros @ White Sox", s.mlb.matchup);
+  TEST_ASSERT_TRUE(s.mlb.hasWhenEt);
+  TEST_ASSERT_EQUAL_STRING("Fri 7/24 7:40 PM", s.mlb.whenEt);
+  TEST_ASSERT_TRUE(s.mlb.hasRecord);
+  TEST_ASSERT_EQUAL_STRING("50-54", s.mlb.record);
+  TEST_ASSERT_TRUE(s.mlb.hasStandingLine);
+  TEST_ASSERT_EQUAL_STRING("3rd AL West · 2 GB", s.mlb.standingLine);
   TEST_ASSERT_TRUE(s.flagstand.lastResult.present);
   TEST_ASSERT_EQUAL_STRING("Round 8", s.flagstand.lastResult.name);
   TEST_ASSERT_TRUE(s.flagstand.lastResult.hasTrackName);

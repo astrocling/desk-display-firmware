@@ -392,35 +392,73 @@ void SimApp::refresh_content() {
         lv_obj_center(lab);
         break;
       }
-      const char* card =
-          v.card == desk_display::SportsCard::Mlb ? "MLB" : "Flagstand";
-      lv_obj_t* title = lv_label_create(body_);
-      lv_label_set_text(title, card);
-      lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-      lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
-      lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
 
-      lv_obj_t* primary = lv_label_create(body_);
-      lv_label_set_long_mode(primary, LV_LABEL_LONG_WRAP);
-      lv_obj_set_width(primary, 280);
       if (v.card == desk_display::SportsCard::Mlb) {
-        lv_label_set_text(primary, v.mlb.primary);
+        const bool nextGameCard = !v.mlb.live && (v.mlb.hasMatchup || v.mlb.hasNextGame);
+        lv_obj_t* title = lv_label_create(body_);
+        lv_label_set_text(title, nextGameCard ? "Next Game" : "MLB");
+        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+
+        if (v.mlb.live) {
+          lv_obj_t* primary = lv_label_create(body_);
+          lv_label_set_text(primary, v.mlb.primary);
+          lv_obj_set_style_text_font(primary, &lv_font_montserrat_28, 0);
+          lv_obj_set_style_text_color(primary, rgb(0xFFFFFF), 0);
+          lv_obj_align(primary, LV_ALIGN_CENTER, 0, -10);
+
+          lv_obj_t* secondary = lv_label_create(body_);
+          lv_label_set_text(secondary, v.mlb.secondary);
+          lv_obj_set_style_text_color(secondary, rgb(desk_display::theme::kDim), 0);
+          lv_obj_align(secondary, LV_ALIGN_CENTER, 0, 30);
+        } else {
+          lv_coord_t y = 48;
+          auto add_line = [&](const char* text, bool dim, const lv_font_t* font) {
+            if (!text || text[0] == '\0') {
+              return;
+            }
+            lv_obj_t* lab = lv_label_create(body_);
+            lv_label_set_long_mode(lab, LV_LABEL_LONG_WRAP);
+            lv_obj_set_width(lab, 280);
+            lv_label_set_text(lab, text);
+            if (font) {
+              lv_obj_set_style_text_font(lab, font, 0);
+            }
+            lv_obj_set_style_text_color(
+                lab, rgb(dim ? desk_display::theme::kDim : 0xFFFFFF), 0);
+            lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_align(lab, LV_ALIGN_TOP_MID, 0, y);
+            y = static_cast<lv_coord_t>(y + (font == &lv_font_montserrat_16 ? 28 : 24));
+          };
+
+          add_line(v.mlb.hasMatchup ? v.mlb.matchup : v.mlb.primary, false,
+                   &lv_font_montserrat_16);
+          add_line(v.mlb.hasWhenEt ? v.mlb.whenEt : v.mlb.secondary, true, nullptr);
+          add_line(v.mlb.hasRecord ? v.mlb.record : "", false, nullptr);
+          add_line(v.mlb.hasStandingLine ? v.mlb.standingLine : "", true, nullptr);
+        }
       } else {
+        lv_obj_t* title = lv_label_create(body_);
+        lv_label_set_text(title, "Flagstand");
+        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+
+        lv_obj_t* primary = lv_label_create(body_);
+        lv_label_set_long_mode(primary, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(primary, 280);
         lv_label_set_text(primary, v.flagstand.lastResultSummary);
-      }
-      lv_obj_set_style_text_color(primary, rgb(0xFFFFFF), 0);
-      lv_obj_align(primary, LV_ALIGN_CENTER, 0, -10);
+        lv_obj_set_style_text_color(primary, rgb(0xFFFFFF), 0);
+        lv_obj_align(primary, LV_ALIGN_CENTER, 0, -10);
 
-      lv_obj_t* secondary = lv_label_create(body_);
-      lv_label_set_long_mode(secondary, LV_LABEL_LONG_WRAP);
-      lv_obj_set_width(secondary, 280);
-      if (v.card == desk_display::SportsCard::Mlb) {
-        lv_label_set_text(secondary, v.mlb.secondary);
-      } else {
+        lv_obj_t* secondary = lv_label_create(body_);
+        lv_label_set_long_mode(secondary, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(secondary, 280);
         lv_label_set_text(secondary, v.flagstand.nextRaceSummary);
+        lv_obj_set_style_text_color(secondary, rgb(desk_display::theme::kDim), 0);
+        lv_obj_align(secondary, LV_ALIGN_CENTER, 0, 40);
       }
-      lv_obj_set_style_text_color(secondary, rgb(desk_display::theme::kDim), 0);
-      lv_obj_align(secondary, LV_ALIGN_CENTER, 0, 40);
 
       if (v.detail) {
         lv_obj_t* d = lv_label_create(body_);

@@ -7,6 +7,10 @@ namespace desk_display {
 constexpr std::size_t kMaxScoreStr = 32;
 constexpr std::size_t kMaxInningStr = 32;
 constexpr std::size_t kMaxIsoStr = 40;
+constexpr std::size_t kMaxMlbMatchup = 64;
+constexpr std::size_t kMaxMlbWhenEt = 32;
+constexpr std::size_t kMaxMlbRecord = 16;
+constexpr std::size_t kMaxMlbStanding = 48;
 constexpr std::size_t kMaxRaceId = 48;
 constexpr std::size_t kMaxRaceName = 96;
 constexpr std::size_t kMaxTrackName = 96;
@@ -22,6 +26,14 @@ struct MlbScores {
   char inning[kMaxInningStr];
   bool hasNextGame;
   char nextGame[kMaxIsoStr];
+  bool hasMatchup;
+  char matchup[kMaxMlbMatchup];
+  bool hasWhenEt;
+  char whenEt[kMaxMlbWhenEt];
+  bool hasRecord;
+  char record[kMaxMlbRecord];
+  bool hasStandingLine;
+  char standingLine[kMaxMlbStanding];
 };
 
 struct FlagstandRace {

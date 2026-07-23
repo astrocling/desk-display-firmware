@@ -18,6 +18,29 @@ void copyStr(char* dest, std::size_t destLen, const char* src) {
   dest[destLen - 1] = '\0';
 }
 
+/** Replace UTF-8 middle dot (U+00B7) with ASCII hyphen for LVGL Montserrat. */
+void copyStandingLineForDisplay(char* dest, std::size_t destLen, const char* src) {
+  if (destLen == 0) {
+    return;
+  }
+  if (!src) {
+    dest[0] = '\0';
+    return;
+  }
+  std::size_t di = 0;
+  for (std::size_t si = 0; src[si] != '\0' && di + 1 < destLen;) {
+    const unsigned char c0 = static_cast<unsigned char>(src[si]);
+    const unsigned char c1 = static_cast<unsigned char>(src[si + 1]);
+    if (c0 == 0xC2 && c1 == 0xB7) {
+      dest[di++] = '-';
+      si += 2;
+      continue;
+    }
+    dest[di++] = src[si++];
+  }
+  dest[di] = '\0';
+}
+
 int wrapIndex(int index, int count) {
   if (count <= 0) {
     return 0;
@@ -94,9 +117,18 @@ void ScreenSports::fillMlbView(SportsMlbView& out) const {
   out.hasScore = m.hasScore;
   out.hasInning = m.hasInning;
   out.hasNextGame = m.hasNextGame;
+  out.hasMatchup = m.hasMatchup;
+  out.hasWhenEt = m.hasWhenEt;
+  out.hasRecord = m.hasRecord;
+  out.hasStandingLine = m.hasStandingLine;
   copyStr(out.score, sizeof(out.score), m.score);
   copyStr(out.inning, sizeof(out.inning), m.inning);
   copyStr(out.nextGame, sizeof(out.nextGame), m.nextGame);
+  copyStr(out.matchup, sizeof(out.matchup), m.matchup);
+  copyStr(out.whenEt, sizeof(out.whenEt), m.whenEt);
+  copyStr(out.record, sizeof(out.record), m.record);
+  copyStandingLineForDisplay(out.standingLine, sizeof(out.standingLine),
+                             m.standingLine);
 
   if (m.live) {
     if (m.hasScore) {
@@ -104,6 +136,11 @@ void ScreenSports::fillMlbView(SportsMlbView& out) const {
     }
     if (m.hasInning) {
       copyStr(out.secondary, sizeof(out.secondary), m.inning);
+    }
+  } else if (m.hasMatchup) {
+    copyStr(out.primary, sizeof(out.primary), m.matchup);
+    if (m.hasWhenEt) {
+      copyStr(out.secondary, sizeof(out.secondary), m.whenEt);
     }
   } else if (m.hasNextGame) {
     copyStr(out.primary, sizeof(out.primary), m.nextGame);
