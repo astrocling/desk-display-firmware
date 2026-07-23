@@ -99,10 +99,21 @@ void ScreenSports::formatRaceSummary(char* dest, std::size_t destLen,
   if (!race.present) {
     return;
   }
-  if (race.hasTrackName && race.trackName[0] != '\0') {
-    std::snprintf(dest, destLen, "%s @ %s", race.name, race.trackName);
-  } else {
-    copyStr(dest, destLen, race.name);
+
+  // Prefer Series - Track; fall back to season label when series is unset.
+  const char* seriesLabel = nullptr;
+  if (race.hasSeriesName && race.seriesName[0] != '\0') {
+    seriesLabel = race.seriesName;
+  } else if (race.seasonName[0] != '\0') {
+    seriesLabel = race.seasonName;
+  }
+
+  if (seriesLabel && race.hasTrackName && race.trackName[0] != '\0') {
+    std::snprintf(dest, destLen, "%s - %s", seriesLabel, race.trackName);
+  } else if (seriesLabel) {
+    copyStr(dest, destLen, seriesLabel);
+  } else if (race.hasTrackName && race.trackName[0] != '\0') {
+    copyStr(dest, destLen, race.trackName);
   }
 }
 

@@ -38,6 +38,13 @@ bool parseFlagstandRace(JsonObjectConst obj, FlagstandRace& out, bool expectStat
   copyStr(out.seasonName, sizeof(out.seasonName),
           obj["seasonName"].as<const char*>());
 
+  out.hasSeriesName = false;
+  if (!obj["seriesName"].isNull() && obj["seriesName"].is<const char*>()) {
+    out.hasSeriesName = true;
+    copyStr(out.seriesName, sizeof(out.seriesName),
+            obj["seriesName"].as<const char*>());
+  }
+
   out.hasTrackName = false;
   if (!obj["trackName"].isNull() && obj["trackName"].is<const char*>()) {
     out.hasTrackName = true;

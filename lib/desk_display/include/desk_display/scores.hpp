@@ -18,6 +18,7 @@ constexpr std::size_t kMaxRaceName = 96;
 constexpr std::size_t kMaxTrackName = 96;
 constexpr std::size_t kMaxLeagueName = 96;
 constexpr std::size_t kMaxSeasonName = 96;
+constexpr std::size_t kMaxSeriesName = 96;
 constexpr std::size_t kMaxRaceStatus = 32;
 
 enum class MlbHomeAway : uint8_t { Unknown = 0, Home, Away };
@@ -54,6 +55,8 @@ struct FlagstandRace {
   char trackName[kMaxTrackName];
   char leagueName[kMaxLeagueName];
   char seasonName[kMaxSeasonName];
+  bool hasSeriesName;
+  char seriesName[kMaxSeriesName];
   bool hasStatus;
   char status[kMaxRaceStatus];
 };

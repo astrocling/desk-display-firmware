@@ -84,10 +84,13 @@ void test_rotate_mlb_flagstand_cycle(void) {
                     static_cast<int>(fs.card));
   TEST_ASSERT_TRUE(fs.flagstand.hasLastResult);
   TEST_ASSERT_FALSE(fs.flagstand.hasNextRace);
-  TEST_ASSERT_EQUAL_STRING("Round 8 @ Lernerville Speedway",
+  TEST_ASSERT_EQUAL_STRING("UMP Modifieds - Lernerville Speedway",
                            fs.flagstand.lastResultSummary);
   TEST_ASSERT_EQUAL_STRING("Round 8", fs.flagstand.lastResult.name);
   TEST_ASSERT_TRUE(fs.flagstand.lastResult.hasTrackName);
+  TEST_ASSERT_TRUE(fs.flagstand.lastResult.hasSeriesName);
+  TEST_ASSERT_EQUAL_STRING("UMP Modifieds",
+                           fs.flagstand.lastResult.seriesName);
 
   g_screen.onRotate(1);
   TEST_ASSERT_EQUAL(static_cast<int>(SportsCard::Mlb),
@@ -137,15 +140,17 @@ void test_mlb_live_score_and_inning(void) {
 void test_flagstand_next_race_when_present(void) {
   Scores s{};
   s.flagstand.lastResult.present = true;
-  std::strncpy(s.flagstand.lastResult.name, "Round 7",
-               sizeof(s.flagstand.lastResult.name) - 1);
+  s.flagstand.lastResult.hasSeriesName = true;
+  std::strncpy(s.flagstand.lastResult.seriesName, "Late Models",
+               sizeof(s.flagstand.lastResult.seriesName) - 1);
   s.flagstand.lastResult.hasTrackName = true;
   std::strncpy(s.flagstand.lastResult.trackName, "Home Track",
                sizeof(s.flagstand.lastResult.trackName) - 1);
 
   s.flagstand.nextRace.present = true;
-  std::strncpy(s.flagstand.nextRace.name, "Race Night 13",
-               sizeof(s.flagstand.nextRace.name) - 1);
+  s.flagstand.nextRace.hasSeriesName = true;
+  std::strncpy(s.flagstand.nextRace.seriesName, "Sprint Cars",
+               sizeof(s.flagstand.nextRace.seriesName) - 1);
   s.flagstand.nextRace.hasTrackName = true;
   std::strncpy(s.flagstand.nextRace.trackName, "Main Track",
                sizeof(s.flagstand.nextRace.trackName) - 1);
@@ -159,9 +164,9 @@ void test_flagstand_next_race_when_present(void) {
   SportsView v = g_screen.view();
   TEST_ASSERT_TRUE(v.flagstand.hasLastResult);
   TEST_ASSERT_TRUE(v.flagstand.hasNextRace);
-  TEST_ASSERT_EQUAL_STRING("Round 7 @ Home Track",
+  TEST_ASSERT_EQUAL_STRING("Late Models - Home Track",
                            v.flagstand.lastResultSummary);
-  TEST_ASSERT_EQUAL_STRING("Race Night 13 @ Main Track",
+  TEST_ASSERT_EQUAL_STRING("Sprint Cars - Main Track",
                            v.flagstand.nextRaceSummary);
   TEST_ASSERT_EQUAL_STRING("SCHEDULED", v.flagstand.nextRace.status);
 }
@@ -189,6 +194,8 @@ void test_detail_toggle(void) {
   TEST_ASSERT_TRUE(fs.flagstand.hasLastResult);
   TEST_ASSERT_TRUE(std::strlen(fs.flagstand.lastResult.leagueName) > 0);
   TEST_ASSERT_TRUE(std::strlen(fs.flagstand.lastResult.seasonName) > 0);
+  TEST_ASSERT_TRUE(fs.flagstand.lastResult.hasSeriesName);
+  TEST_ASSERT_TRUE(std::strlen(fs.flagstand.lastResult.seriesName) > 0);
   TEST_ASSERT_TRUE(std::strlen(fs.flagstand.lastResult.id) > 0);
 
   g_screen.exitDetail();
