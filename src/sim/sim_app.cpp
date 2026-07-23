@@ -10,6 +10,7 @@
 #include "desk_display/timezones.hpp"
 #include "desk_display/weather.hpp"
 #include "desk_display/weather_icons.hpp"
+#include "mlb_img.hpp"
 #include "weather_img.hpp"
 
 #include <cstdio>
@@ -395,13 +396,14 @@ void SimApp::refresh_content() {
 
       if (v.card == desk_display::SportsCard::Mlb) {
         const bool nextGameCard = !v.mlb.live && (v.mlb.hasMatchup || v.mlb.hasNextGame);
-        lv_obj_t* title = lv_label_create(body_);
-        lv_label_set_text(title, nextGameCard ? "Next Game" : "MLB");
-        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-        lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
-        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
 
         if (v.mlb.live) {
+          lv_obj_t* title = lv_label_create(body_);
+          lv_label_set_text(title, "MLB");
+          lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+          lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
+          lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+
           lv_obj_t* primary = lv_label_create(body_);
           lv_label_set_text(primary, v.mlb.primary);
           lv_obj_set_style_text_font(primary, &lv_font_montserrat_28, 0);
@@ -413,12 +415,30 @@ void SimApp::refresh_content() {
           lv_obj_set_style_text_color(secondary, rgb(desk_display::theme::kDim), 0);
           lv_obj_align(secondary, LV_ALIGN_CENTER, 0, 30);
         } else {
-          lv_coord_t y = 48;
+          // Vertically centered card: title + (logo hero or matchup text) +
+          // whenEt/record/standing, all in one flex column (no top y-stack).
+          lv_obj_t* col = lv_obj_create(body_);
+          lv_obj_set_size(col, 280, 220);
+          lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
+          lv_obj_set_style_border_width(col, 0, 0);
+          lv_obj_set_style_pad_all(col, 0, 0);
+          lv_obj_set_style_pad_row(col, 6, 0);
+          lv_obj_clear_flag(col, LV_OBJ_FLAG_SCROLLABLE);
+          lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+          lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                                LV_FLEX_ALIGN_CENTER);
+          lv_obj_center(col);
+
+          lv_obj_t* title = lv_label_create(col);
+          lv_label_set_text(title, nextGameCard ? "Next Game" : "MLB");
+          lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+          lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
+
           auto add_line = [&](const char* text, bool dim, const lv_font_t* font) {
             if (!text || text[0] == '\0') {
               return;
             }
-            lv_obj_t* lab = lv_label_create(body_);
+            lv_obj_t* lab = lv_label_create(col);
             lv_label_set_long_mode(lab, LV_LABEL_LONG_WRAP);
             lv_obj_set_width(lab, 280);
             lv_label_set_text(lab, text);
@@ -428,12 +448,46 @@ void SimApp::refresh_content() {
             lv_obj_set_style_text_color(
                 lab, rgb(dim ? desk_display::theme::kDim : 0xFFFFFF), 0);
             lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_align(lab, LV_ALIGN_TOP_MID, 0, y);
-            y = static_cast<lv_coord_t>(y + (font == &lv_font_montserrat_16 ? 28 : 24));
           };
 
-          add_line(v.mlb.hasMatchup ? v.mlb.matchup : v.mlb.primary, false,
-                   &lv_font_montserrat_16);
+          if (v.mlb.showLogoHero) {
+            lv_obj_t* hero = lv_obj_create(col);
+            lv_obj_set_size(hero, 280, 60);
+            lv_obj_set_style_bg_opa(hero, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(hero, 0, 0);
+            lv_obj_set_style_pad_all(hero, 0, 0);
+            lv_obj_set_style_pad_column(hero, 10, 0);
+            lv_obj_clear_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_ROW);
+            lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                                  LV_FLEX_ALIGN_CENTER);
+
+            auto add_team_slot = [&](const char* abbr) {
+              const lv_img_dsc_t* logo = mlbTeamLogoImg(abbr);
+              if (logo) {
+                lv_obj_t* img = lv_img_create(hero);
+                lv_img_set_src(img, logo);
+              } else {
+                lv_obj_t* lab = lv_label_create(hero);
+                lv_label_set_text(lab, (abbr && abbr[0]) ? abbr : "?");
+                lv_obj_set_style_text_font(lab, &lv_font_montserrat_20, 0);
+                lv_obj_set_style_text_color(lab, rgb(0xFFFFFF), 0);
+              }
+            };
+
+            add_team_slot(v.mlb.teamAbbr);
+
+            lv_obj_t* conn = lv_label_create(hero);
+            lv_label_set_text(conn, v.mlb.hasConnector ? v.mlb.connector : "@");
+            lv_obj_set_style_text_font(conn, &lv_font_montserrat_16, 0);
+            lv_obj_set_style_text_color(conn, rgb(desk_display::theme::kDim), 0);
+
+            add_team_slot(v.mlb.opponentAbbr);
+          } else {
+            add_line(v.mlb.hasMatchup ? v.mlb.matchup : v.mlb.primary, false,
+                     &lv_font_montserrat_16);
+          }
+
           add_line(v.mlb.hasWhenEt ? v.mlb.whenEt : v.mlb.secondary, true, nullptr);
           add_line(v.mlb.hasRecord ? v.mlb.record : "", false, nullptr);
           add_line(v.mlb.hasStandingLine ? v.mlb.standingLine : "", true, nullptr);
