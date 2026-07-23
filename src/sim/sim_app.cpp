@@ -555,7 +555,7 @@ void SimApp::on_rotate_focused(int delta) {
   }
 }
 
-void SimApp::on_tap_focused() {
+void SimApp::on_tap_focused(int16_t x, int16_t y) {
   using desk_display::Screen;
   switch (nav_.focused()) {
     case Screen::Sports:
@@ -570,17 +570,46 @@ void SimApp::on_tap_focused() {
         }
       }
       break;
-    case Screen::Radar:
-      if (radar_.blipCount() > 0) {
-        if (radar_.hasSelection()) {
+    case Screen::Radar: {
+      const auto rv = radar_.view();
+      if (rv.blipCount == 0) {
+        break;
+      }
+
+      // Disc center in absolute display px: root_ is centered on the
+      // display, content_ is centered on root_ with a +8 y offset, and
+      // body_/disc are centered within content_ — see init()/radar_lvgl.
+      constexpr float kDiscCenterX = static_cast<float>(kDispW) / 2.0f;
+      constexpr float kDiscCenterY = static_cast<float>(kDispH) / 2.0f + 8.0f;
+      constexpr float kHitRadiusPx = 20.0f;
+      const float scale = 110.0f / (rv.rangeMiles > 0 ? rv.rangeMiles : 1.0f);
+      const float rx = static_cast<float>(x) - kDiscCenterX;
+      const float ry = static_cast<float>(y) - kDiscCenterY;
+
+      std::size_t nearest = 0;
+      float nearestDistSq = -1.0f;
+      for (std::size_t i = 0; i < rv.blipCount; ++i) {
+        const auto& b = rv.blips[i];
+        const float dx = b.offsetXMi * scale - rx;
+        const float dy = -b.offsetYMi * scale - ry;
+        const float distSq = dx * dx + dy * dy;
+        if (nearestDistSq < 0.0f || distSq < nearestDistSq) {
+          nearestDistSq = distSq;
+          nearest = i;
+        }
+      }
+
+      if (nearestDistSq >= 0.0f && nearestDistSq <= kHitRadiusPx * kHitRadiusPx) {
+        if (radar_.hasSelection() && radar_.selectedIndex() == nearest) {
           radar_.clearSelection();
         } else {
-          radar_.selectBlip(0);
+          radar_.selectBlip(nearest);
         }
       } else {
-        radar_.toggleMode();
+        radar_.clearSelection();
       }
       break;
+    }
     case Screen::Timezones:
       // Tap cycles anchor for sim convenience (device uses row tap)
       timezones_.onTapRow((timezones_.anchorIndex() + 1) % desk_display::kTimezoneBoardRows);
@@ -653,9 +682,9 @@ void SimApp::handle_input() {
   }
   if (keys.tap) {
     if (nav_.mode() == desk_display::NavMode::Focused) {
-      on_tap_focused();
+      on_tap_focused(keys.tap_x, keys.tap_y);
     }
-    nav_.on_tap(0, 0);
+    nav_.on_tap(keys.tap_x, keys.tap_y);
   }
   if (keys.double_tap) {
     if (nav_.mode() == desk_display::NavMode::Focused) {

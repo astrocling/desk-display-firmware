@@ -67,6 +67,8 @@ void map_key(SDL_Keycode key, bool down) {
       break;
     case SDLK_t:
       pending_.tap = true;
+      pending_.tap_x = static_cast<int16_t>(mouse_x_);
+      pending_.tap_y = static_cast<int16_t>(mouse_y_);
       break;
     case SDLK_y:
       pending_.double_tap = true;

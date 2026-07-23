@@ -18,6 +18,8 @@ struct KeyEvents {
   int rotate_delta;  // encoder ticks this frame
   bool center_tap;
   bool tap;
+  int16_t tap_x;  // mouse position (display px) at time of `tap`
+  int16_t tap_y;
   bool double_tap;
   bool long_press;
   bool quit;

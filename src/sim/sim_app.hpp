@@ -25,7 +25,7 @@ class SimApp {
   void rebuild_ui_for_active();
   void refresh_content();
   void on_rotate_focused(int delta);
-  void on_tap_focused();
+  void on_tap_focused(int16_t x, int16_t y);
   void on_double_tap_focused();
   void on_long_press_focused();
 
