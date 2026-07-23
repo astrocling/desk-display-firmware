@@ -2,8 +2,10 @@
 
 #include <cmath>
 
+#include "desk_display/adsb.hpp"
 #include "desk_display/format_time.hpp"
 #include "desk_display/radar.hpp"
+#include "desk_display/radar_format.hpp"
 #include "desk_display/scrub.hpp"
 #include "desk_display/timezone_status.hpp"
 #include "desk_display/weather_icons.hpp"
@@ -103,6 +105,50 @@ void test_radar_clamp_range(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 25.0f, clampRadarRangeMiles(25.0f));
 }
 
+void test_format_radar_altitude_examples(void) {
+  char buf[8];
+  TEST_ASSERT_TRUE(formatRadarAltitude(buf, sizeof(buf), 33000.0f));
+  TEST_ASSERT_EQUAL_STRING("F330", buf);
+  TEST_ASSERT_TRUE(formatRadarAltitude(buf, sizeof(buf), 5200.0f));
+  TEST_ASSERT_EQUAL_STRING("A052", buf);
+  TEST_ASSERT_TRUE(formatRadarAltitude(buf, sizeof(buf), 18000.0f));
+  TEST_ASSERT_EQUAL_STRING("F180", buf);
+  TEST_ASSERT_TRUE(formatRadarAltitude(buf, sizeof(buf), 17999.0f));
+  TEST_ASSERT_EQUAL_STRING("A180", buf);
+}
+
+void test_radar_trend_deadband(void) {
+  TEST_ASSERT_EQUAL(static_cast<int>(RadarTrend::None),
+                    static_cast<int>(radarTrendFromRate(50.0f, true)));
+  TEST_ASSERT_EQUAL(static_cast<int>(RadarTrend::Climb),
+                    static_cast<int>(radarTrendFromRate(128.0f, true)));
+  TEST_ASSERT_EQUAL(static_cast<int>(RadarTrend::Descend),
+                    static_cast<int>(radarTrendFromRate(-192.0f, true)));
+  TEST_ASSERT_EQUAL(static_cast<int>(RadarTrend::None),
+                    static_cast<int>(radarTrendFromRate(999.0f, false)));
+}
+
+void test_format_radar_tag_line2_omits_missing(void) {
+  Aircraft ac{};
+  ac.hasAlt = true;
+  ac.altFt = 33000.0f;
+  ac.hasSpeed = true;
+  ac.speedKt = 474.5f;
+  ac.hasBaroRate = false;
+  char buf[32];
+  TEST_ASSERT_TRUE(formatRadarTagLine2(buf, sizeof(buf), ac));
+  TEST_ASSERT_EQUAL_STRING("F330 G475", buf);
+
+  Aircraft onlyAlt{};
+  onlyAlt.hasAlt = true;
+  onlyAlt.altFt = 4500.0f;
+  TEST_ASSERT_TRUE(formatRadarTagLine2(buf, sizeof(buf), onlyAlt));
+  TEST_ASSERT_EQUAL_STRING("A045", buf);
+
+  Aircraft empty{};
+  TEST_ASSERT_FALSE(formatRadarTagLine2(buf, sizeof(buf), empty));
+}
+
 void test_radar_offset_and_distance(void) {
   float x = 0.0f;
   float y = 0.0f;
@@ -137,6 +183,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_format12_hour_short);
   RUN_TEST(test_parse_hourly_iso_hour);
   RUN_TEST(test_radar_clamp_range);
+  RUN_TEST(test_format_radar_altitude_examples);
+  RUN_TEST(test_radar_trend_deadband);
+  RUN_TEST(test_format_radar_tag_line2_omits_missing);
   RUN_TEST(test_radar_offset_and_distance);
   return UNITY_END();
 }
