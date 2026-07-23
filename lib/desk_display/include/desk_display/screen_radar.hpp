@@ -146,6 +146,11 @@ class ScreenRadar {
   void applyRange(float rangeMiles);
   void setActiveCenter(double lat, double lon, bool temp);
 
+  /** Save selected callsign before rebuild; returns false if none. */
+  bool captureSelectionCallsign(char* dst, std::size_t dstLen) const;
+  /** Re-find callsign in blips_; clear selection if missing. */
+  void restoreSelectionByCallsign(const char* callsign);
+
   bool ready_;
   RadarMode mode_;
   float rangeMiles_;

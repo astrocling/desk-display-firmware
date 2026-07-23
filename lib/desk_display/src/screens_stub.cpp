@@ -22,9 +22,9 @@ void screen_sports_destroy() {}
 void screen_sports_show() {}
 void screen_sports_hide() {}
 
-// Radar has a strong LVGL implementation in src/ui/screen_radar_lvgl.cpp
-// (sim + dial). These weak no-ops satisfy the ScreenOps registry for
-// native tests and any build that doesn't link src/ui/.
+// Radar LVGL renderer lives in src/ui/radar_lvgl.cpp (sim links it; dial
+// will use screen_radar_*). These weak no-ops satisfy the ScreenOps registry
+// for native tests and any build that doesn't link src/ui/.
 __attribute__((weak)) void screen_radar_create() {}
 __attribute__((weak)) void screen_radar_destroy() {}
 __attribute__((weak)) void screen_radar_show() {}

@@ -14,7 +14,6 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr int kRingCount = 3;
 constexpr int kMaxDots = 40;
 constexpr lv_coord_t kDotPx = 6;
-constexpr uint32_t kRingColor = 0x2A323D;
 constexpr uint32_t kSweepColor = 0x3DFF7A;
 constexpr uint32_t kDotColor = 0x3DFF7A;
 constexpr uint32_t kSelectedColor = 0xFFFFFF;
@@ -52,7 +51,7 @@ void build_rings(lv_obj_t* disc) {
     lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(ring, 1, 0);
-    lv_obj_set_style_border_color(ring, rgb(kRingColor), 0);
+    lv_obj_set_style_border_color(ring, rgb(desk_display::theme::kDim), 0);
     lv_obj_set_style_pad_all(ring, 0, 0);
     lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(ring, LV_OBJ_FLAG_CLICKABLE);

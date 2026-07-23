@@ -242,6 +242,50 @@ void test_radar_bind_clears_selection_when_gone(void) {
   TEST_ASSERT_FALSE(screen.hasSelection());
 }
 
+void test_radar_zoom_preserves_selection_by_callsign(void) {
+  ScreenRadar screen;
+  const AircraftList list = loadAdsbFixture();
+  screen.bind(list);
+
+  constexpr const char* kTarget = "N5953Q";
+  std::size_t idx = 0;
+  bool found = false;
+  for (std::size_t i = 0; i < screen.blipCount(); ++i) {
+    if (std::strcmp(screen.blip(i).aircraft.callsign, kTarget) == 0) {
+      idx = i;
+      found = true;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE(found);
+  TEST_ASSERT_TRUE(screen.selectBlip(idx));
+  TEST_ASSERT_EQUAL_STRING(kTarget, screen.detailCard().callsign);
+
+  // Zoom out: more blips may appear before the selected aircraft.
+  screen.onRotate(5);
+  TEST_ASSERT_TRUE(screen.hasSelection());
+  TEST_ASSERT_EQUAL_STRING(kTarget, screen.detailCard().callsign);
+
+  // Zoom in: blip count drops but callsign still in range.
+  screen.onRotate(-3);
+  TEST_ASSERT_TRUE(screen.hasSelection());
+  TEST_ASSERT_EQUAL_STRING(kTarget, screen.detailCard().callsign);
+
+  // Tighten to minimum range until the callsign is filtered out.
+  while (screen.rangeMiles() > kRadarRangeMinMi) {
+    screen.onRotate(-1);
+  }
+  bool stillVisible = false;
+  for (std::size_t i = 0; i < screen.blipCount(); ++i) {
+    if (std::strcmp(screen.blip(i).aircraft.callsign, kTarget) == 0) {
+      stillVisible = true;
+      break;
+    }
+  }
+  TEST_ASSERT_FALSE(stillVisible);
+  TEST_ASSERT_FALSE(screen.hasSelection());
+}
+
 void test_adsb_url_from_radar_home(void) {
   char url[160];
   TEST_ASSERT_TRUE(buildAdsbLolUrl(url, sizeof(url), kRadarHomeLat, kRadarHomeLon,
@@ -332,6 +376,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_sweep_advances_and_wraps);
   RUN_TEST(test_radar_bind_preserves_selection_by_callsign);
   RUN_TEST(test_radar_bind_clears_selection_when_gone);
+  RUN_TEST(test_radar_zoom_preserves_selection_by_callsign);
   RUN_TEST(test_radar_temp_vs_pin_center);
   RUN_TEST(test_adsb_url_from_radar_home);
   return UNITY_END();

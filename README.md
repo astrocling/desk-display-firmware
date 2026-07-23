@@ -11,7 +11,7 @@ No Dial hardware yet. **Tracks 0–C are done** on the host (scaffold, API parse
 ### Unit tests
 
 ```bash
-pio test -e native   # 65 cases — parsers, domain, nav, all screen models
+pio test -e native   # 85 cases — parsers, domain, nav, all screen models
 ```
 
 ### Desktop simulator

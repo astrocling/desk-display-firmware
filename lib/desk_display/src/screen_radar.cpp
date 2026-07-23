@@ -45,34 +45,45 @@ void ScreenRadar::reset() {
   sweepAngleDeg_ = 0.0f;
 }
 
+bool ScreenRadar::captureSelectionCallsign(char* dst,
+                                           std::size_t dstLen) const {
+  if (!dst || dstLen == 0) {
+    return false;
+  }
+  if (hasSelection_ && selectedIndex_ < blips_.count) {
+    copyCallsign(dst, dstLen, blips_.items[selectedIndex_].aircraft.callsign);
+    return true;
+  }
+  dst[0] = '\0';
+  return false;
+}
+
+void ScreenRadar::restoreSelectionByCallsign(const char* callsign) {
+  if (!callsign || callsign[0] == '\0') {
+    clearSelection();
+    return;
+  }
+  for (std::size_t i = 0; i < blips_.count; ++i) {
+    if (std::strcmp(blips_.items[i].aircraft.callsign, callsign) == 0) {
+      hasSelection_ = true;
+      selectedIndex_ = i;
+      return;
+    }
+  }
+  clearSelection();
+}
+
 void ScreenRadar::bind(const AircraftList& list) {
   char selectedCallsign[kMaxCallsign]{};
-  bool hadSelection = hasSelection_;
-  if (hadSelection && selectedIndex_ < blips_.count) {
-    copyCallsign(selectedCallsign, sizeof(selectedCallsign),
-                 blips_.items[selectedIndex_].aircraft.callsign);
-  } else {
-    hadSelection = false;
-  }
+  const bool hadSelection =
+      captureSelectionCallsign(selectedCallsign, sizeof(selectedCallsign));
 
   source_ = list;
   ready_ = true;
   rebuildBlips();
 
   if (hadSelection) {
-    bool reselected = false;
-    for (std::size_t i = 0; i < blips_.count; ++i) {
-      if (std::strcmp(blips_.items[i].aircraft.callsign, selectedCallsign) ==
-          0) {
-        hasSelection_ = true;
-        selectedIndex_ = i;
-        reselected = true;
-        break;
-      }
-    }
-    if (!reselected) {
-      clearSelection();
-    }
+    restoreSelectionByCallsign(selectedCallsign);
   } else {
     hasSelection_ = false;
     selectedIndex_ = 0;
@@ -216,6 +227,10 @@ RadarView ScreenRadar::view() const {
 }
 
 void ScreenRadar::rebuildBlips() {
+  char selectedCallsign[kMaxCallsign]{};
+  const bool hadSelection =
+      captureSelectionCallsign(selectedCallsign, sizeof(selectedCallsign));
+
   AircraftList filtered{};
   filterAircraftByRange(source_, centerLat_, centerLon_, rangeMiles_, filtered);
 
@@ -228,8 +243,8 @@ void ScreenRadar::rebuildBlips() {
     ++blips_.count;
   }
 
-  if (hasSelection_ && selectedIndex_ >= blips_.count) {
-    clearSelection();
+  if (hadSelection) {
+    restoreSelectionByCallsign(selectedCallsign);
   }
 }
 
