@@ -3,7 +3,6 @@
 #include "assets/mlb/mlb_logos_assets.h"
 
 #include <cctype>
-#include <cstring>
 
 namespace {
 
@@ -37,17 +36,15 @@ const LogoEntry kLogos[] = {
     {"TEX", &mlb_logo_tex}, {"TOR", &mlb_logo_tor}, {"WSH", &mlb_logo_wsh},
 };
 
-constexpr std::size_t kLogoCount = sizeof(kLogos) / sizeof(kLogos[0]);
-
 }  // namespace
 
 const lv_img_dsc_t* mlbTeamLogoImg(const char* abbr) {
   if (abbr == nullptr || abbr[0] == '\0') {
     return nullptr;
   }
-  for (std::size_t i = 0; i < kLogoCount; ++i) {
-    if (equalsIgnoreCase(abbr, kLogos[i].abbr)) {
-      return kLogos[i].img;
+  for (const LogoEntry& entry : kLogos) {
+    if (equalsIgnoreCase(abbr, entry.abbr)) {
+      return entry.img;
     }
   }
   return nullptr;

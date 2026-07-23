@@ -98,6 +98,23 @@ void test_rotate_mlb_flagstand_cycle(void) {
                     static_cast<int>(g_screen.card()));
 }
 
+void test_mlb_home_logo_hero(void) {
+  Scores s{};
+  s.mlb.live = false;
+  s.mlb.hasTeamAbbr = true;
+  std::strncpy(s.mlb.teamAbbr, "HOU", sizeof(s.mlb.teamAbbr) - 1);
+  s.mlb.hasOpponentAbbr = true;
+  std::strncpy(s.mlb.opponentAbbr, "CHW", sizeof(s.mlb.opponentAbbr) - 1);
+  s.mlb.homeAway = MlbHomeAway::Home;
+
+  g_screen.bind(s);
+  SportsView v = g_screen.view();
+  TEST_ASSERT_FALSE(v.mlb.live);
+  TEST_ASSERT_TRUE(v.mlb.hasConnector);
+  TEST_ASSERT_EQUAL_STRING("vs", v.mlb.connector);
+  TEST_ASSERT_TRUE(v.mlb.showLogoHero);
+}
+
 void test_mlb_live_score_and_inning(void) {
   Scores s{};
   s.mlb.live = true;
@@ -209,6 +226,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_unbound_not_ready);
   RUN_TEST(test_bind_fixture_ready_mlb_next_game);
   RUN_TEST(test_rotate_mlb_flagstand_cycle);
+  RUN_TEST(test_mlb_home_logo_hero);
   RUN_TEST(test_mlb_live_score_and_inning);
   RUN_TEST(test_flagstand_next_race_when_present);
   RUN_TEST(test_detail_toggle);
