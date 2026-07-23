@@ -196,6 +196,51 @@ void test_parse_adsb_missing_track_rate(void) {
   TEST_ASSERT_FALSE(list.items[0].hasBaroRate);
 }
 
+void test_radar_sweep_advances_and_wraps(void) {
+  ScreenRadar screen;
+  screen.bind(loadAdsbFixture());
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, screen.view().sweepAngleDeg);
+  screen.onTick(1000);
+  TEST_ASSERT_FLOAT_WITHIN(0.5f, 150.0f, screen.view().sweepAngleDeg);
+  screen.onTick(2000);  // +300 → 450 → 90
+  TEST_ASSERT_FLOAT_WITHIN(0.5f, 90.0f, screen.view().sweepAngleDeg);
+}
+
+void test_radar_bind_preserves_selection_by_callsign(void) {
+  ScreenRadar screen;
+  AircraftList list = loadAdsbFixture();
+  screen.bind(list);
+  std::size_t idx = 0;
+  bool found = false;
+  for (std::size_t i = 0; i < screen.blipCount(); ++i) {
+    if (std::strcmp(screen.blip(i).aircraft.callsign, "UAL2402") == 0) {
+      idx = i;
+      found = true;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE(found);
+  TEST_ASSERT_TRUE(screen.selectBlip(idx));
+  screen.bind(list);
+  TEST_ASSERT_TRUE(screen.hasSelection());
+  TEST_ASSERT_EQUAL_STRING("UAL2402", screen.detailCard().callsign);
+}
+
+void test_radar_bind_clears_selection_when_gone(void) {
+  ScreenRadar screen;
+  AircraftList list = loadAdsbFixture();
+  screen.bind(list);
+  TEST_ASSERT_TRUE(screen.selectBlip(0));
+  AircraftList other{};
+  other.count = 1;
+  std::snprintf(other.items[0].callsign, sizeof(other.items[0].callsign), "ZZZZZZ");
+  other.items[0].hasPosition = true;
+  other.items[0].lat = kRadarHomeLat;
+  other.items[0].lon = kRadarHomeLon;
+  screen.bind(other);
+  TEST_ASSERT_FALSE(screen.hasSelection());
+}
+
 void test_radar_temp_vs_pin_center(void) {
   ScreenRadar screen;
   screen.bind(loadAdsbFixture());
@@ -274,6 +319,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_parse_adsb_track_and_rate);
   RUN_TEST(test_parse_adsb_calc_track_and_geom_rate_fallback);
   RUN_TEST(test_parse_adsb_missing_track_rate);
+  RUN_TEST(test_radar_sweep_advances_and_wraps);
+  RUN_TEST(test_radar_bind_preserves_selection_by_callsign);
+  RUN_TEST(test_radar_bind_clears_selection_when_gone);
   RUN_TEST(test_radar_temp_vs_pin_center);
   return UNITY_END();
 }

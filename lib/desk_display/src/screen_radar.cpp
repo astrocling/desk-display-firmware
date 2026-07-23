@@ -1,5 +1,8 @@
 #include "desk_display/screen_radar.hpp"
 
+#include "desk_display/radar_format.hpp"
+
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -39,14 +42,49 @@ void ScreenRadar::reset() {
   std::memset(&blips_, 0, sizeof(blips_));
   hasSelection_ = false;
   selectedIndex_ = 0;
+  sweepAngleDeg_ = 0.0f;
 }
 
 void ScreenRadar::bind(const AircraftList& list) {
+  char selectedCallsign[kMaxCallsign]{};
+  bool hadSelection = hasSelection_;
+  if (hadSelection && selectedIndex_ < blips_.count) {
+    copyCallsign(selectedCallsign, sizeof(selectedCallsign),
+                 blips_.items[selectedIndex_].aircraft.callsign);
+  } else {
+    hadSelection = false;
+  }
+
   source_ = list;
   ready_ = true;
-  hasSelection_ = false;
-  selectedIndex_ = 0;
   rebuildBlips();
+
+  if (hadSelection) {
+    bool reselected = false;
+    for (std::size_t i = 0; i < blips_.count; ++i) {
+      if (std::strcmp(blips_.items[i].aircraft.callsign, selectedCallsign) ==
+          0) {
+        hasSelection_ = true;
+        selectedIndex_ = i;
+        reselected = true;
+        break;
+      }
+    }
+    if (!reselected) {
+      clearSelection();
+    }
+  } else {
+    hasSelection_ = false;
+    selectedIndex_ = 0;
+  }
+}
+
+void ScreenRadar::onTick(uint32_t elapsedMs) {
+  sweepAngleDeg_ += static_cast<float>(elapsedMs) * kRadarSweepDegPerSec / 1000.0f;
+  sweepAngleDeg_ = std::fmod(sweepAngleDeg_, 360.0f);
+  if (sweepAngleDeg_ < 0.0f) {
+    sweepAngleDeg_ += 360.0f;
+  }
 }
 
 void ScreenRadar::unbind() {
@@ -100,6 +138,9 @@ RadarDetailCard ScreenRadar::detailCard() const {
   card.speedKt = 0.0f;
   card.hasAlt = false;
   card.hasSpeed = false;
+  card.tagLine2[0] = '\0';
+  card.altLabel[0] = '\0';
+  card.speedLabel[0] = '\0';
 
   if (!hasSelection_ || selectedIndex_ >= blips_.count) {
     return card;
@@ -112,6 +153,14 @@ RadarDetailCard ScreenRadar::detailCard() const {
   card.hasSpeed = ac.hasSpeed;
   card.altFt = ac.altFt;
   card.speedKt = ac.speedKt;
+
+  if (ac.hasAlt) {
+    formatRadarAltitude(card.altLabel, sizeof(card.altLabel), ac.altFt);
+  }
+  if (ac.hasSpeed) {
+    formatRadarSpeed(card.speedLabel, sizeof(card.speedLabel), ac.speedKt);
+  }
+  formatRadarTagLine2(card.tagLine2, sizeof(card.tagLine2), ac);
   return card;
 }
 
@@ -162,6 +211,7 @@ RadarView ScreenRadar::view() const {
   v.hasSelection = hasSelection_;
   v.selectedIndex = selectedIndex_;
   v.detail = detailCard();
+  v.sweepAngleDeg = sweepAngleDeg_;
   return v;
 }
 

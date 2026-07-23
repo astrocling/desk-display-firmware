@@ -19,6 +19,9 @@ constexpr float kRadarDefaultRangeMi = 25.0f;
 /** Encoder zoom step (miles). */
 constexpr float kRadarRangeStepMi = 5.0f;
 
+/** Classic sweep rotation speed (degrees per second). */
+constexpr float kRadarSweepDegPerSec = 150.0f;
+
 enum class RadarMode : uint8_t {
   ClassicSweep = 0,
   Detail = 1,
@@ -39,6 +42,9 @@ struct RadarDetailCard {
   float speedKt;
   bool hasAlt;
   bool hasSpeed;
+  char tagLine2[24];
+  char altLabel[8];
+  char speedLabel[8];
 };
 
 /** Snapshot for LVGL (or tests) to render the radar screen. */
@@ -58,6 +64,7 @@ struct RadarView {
   bool hasSelection;
   std::size_t selectedIndex;
   RadarDetailCard detail;
+  float sweepAngleDeg;
 };
 
 /**
@@ -73,6 +80,9 @@ class ScreenRadar {
 
   /** Copy aircraft list and rebuild blips for current center/range. */
   void bind(const AircraftList& list);
+
+  /** Advance classic sweep angle (degrees, wraps [0, 360)). */
+  void onTick(uint32_t elapsedMs);
 
   /** Clear bound data; not ready until bind again. */
   void unbind();
@@ -158,6 +168,7 @@ class ScreenRadar {
 
   bool hasSelection_;
   std::size_t selectedIndex_;
+  float sweepAngleDeg_;
 };
 
 }  // namespace desk_display
