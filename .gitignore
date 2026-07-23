@@ -41,3 +41,6 @@ __pycache__/
 .Python
 venv/
 .venv/
+
+# Local brainstorm / agent session artifacts
+.superpowers/
