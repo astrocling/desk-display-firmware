@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "desk_display/format_time.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/scrub.hpp"
 #include "desk_display/timezone_status.hpp"
@@ -72,6 +73,30 @@ void test_wmo_to_icon(void) {
                     static_cast<int>(wmoToIcon(999)));
 }
 
+void test_format12_hour_short(void) {
+  char buf[16];
+  TEST_ASSERT_TRUE(format12HourShort(buf, sizeof(buf), 0) > 0);
+  TEST_ASSERT_EQUAL_STRING("12 AM", buf);
+  TEST_ASSERT_TRUE(format12HourShort(buf, sizeof(buf), 12) > 0);
+  TEST_ASSERT_EQUAL_STRING("12 PM", buf);
+  TEST_ASSERT_TRUE(format12HourShort(buf, sizeof(buf), 18) > 0);
+  TEST_ASSERT_EQUAL_STRING("6 PM", buf);
+  TEST_ASSERT_TRUE(format12HourShort(buf, sizeof(buf), 6) > 0);
+  TEST_ASSERT_EQUAL_STRING("6 AM", buf);
+}
+
+void test_parse_hourly_iso_hour(void) {
+  int hour = -1;
+  TEST_ASSERT_TRUE(parseHourlyIsoHour("2026-07-23T18:00", hour));
+  TEST_ASSERT_EQUAL(18, hour);
+  TEST_ASSERT_TRUE(parseHourlyIsoHour("2026-07-23T00:00:00Z", hour));
+  TEST_ASSERT_EQUAL(0, hour);
+  TEST_ASSERT_TRUE(parseHourlyIsoHour("2026-07-24T12:30", hour));
+  TEST_ASSERT_EQUAL(12, hour);
+  TEST_ASSERT_FALSE(parseHourlyIsoHour("bad", hour));
+  TEST_ASSERT_FALSE(parseHourlyIsoHour(nullptr, hour));
+}
+
 void test_radar_clamp_range(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 5.0f, clampRadarRangeMiles(1.0f));
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 50.0f, clampRadarRangeMiles(100.0f));
@@ -109,6 +134,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_timezone_row_status_daylight_override);
   RUN_TEST(test_scrub_offset_one_hour);
   RUN_TEST(test_wmo_to_icon);
+  RUN_TEST(test_format12_hour_short);
+  RUN_TEST(test_parse_hourly_iso_hour);
   RUN_TEST(test_radar_clamp_range);
   RUN_TEST(test_radar_offset_and_distance);
   return UNITY_END();
