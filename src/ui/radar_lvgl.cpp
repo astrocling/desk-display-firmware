@@ -1,6 +1,7 @@
 #include "radar_lvgl.hpp"
 
 #include "desk_display/radar.hpp"
+#include "desk_display/screen_radar.hpp"
 #include "desk_display/theme.hpp"
 
 #include <cmath>
@@ -14,10 +15,14 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr int kRingCount = 3;
 constexpr int kMaxDots = 40;
 constexpr lv_coord_t kDotPx = 6;
-constexpr uint32_t kSweepColor = 0x3DFF7A;
-constexpr uint32_t kDotColor = 0x3DFF7A;
+constexpr uint32_t kSweepColor = 0x00FF00;
+constexpr uint32_t kDotColor = 0x00FF00;
 constexpr uint32_t kSelectedColor = 0xFFFFFF;
 constexpr uint32_t kLeaderColor = 0x3D9CF0;
+
+// DeskRad-matching phosphor trail: 30° arc, 25 slices, quadratic brightness.
+constexpr float kTrailArcDeg = 30.0f;
+constexpr int kTrailSlices = 25;
 
 // Velocity vector length (px) scaled from ground speed (kt); mid length when
 // speed is unknown but a track is present.
@@ -39,8 +44,16 @@ float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : 
 // time (fully torn down and rebuilt on every refresh), static buffers sized
 // for the worst case are safe to reuse across calls.
 lv_point_t g_sweep_points[2];
+lv_point_t g_trail_points[kTrailSlices][2];
 lv_point_t g_vector_points[kMaxDots][2];
 lv_point_t g_leader_points[2];
+
+void sweep_endpoint(float angleDeg, lv_coord_t cx, lv_coord_t cy, float r,
+                    lv_point_t& out) {
+  const float rad = angleDeg * kPi / 180.0f;
+  out.x = static_cast<lv_coord_t>(cx + r * std::sin(rad));
+  out.y = static_cast<lv_coord_t>(cy - r * std::cos(rad));
+}
 
 void build_rings(lv_obj_t* disc) {
   for (int i = 1; i <= kRingCount; ++i) {
@@ -51,25 +64,46 @@ void build_rings(lv_obj_t* disc) {
     lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(ring, 1, 0);
-    lv_obj_set_style_border_color(ring, rgb(desk_display::theme::kDim), 0);
+    lv_obj_set_style_border_color(ring, rgb(0x006900), 0);  // DeskRad ring green
     lv_obj_set_style_pad_all(ring, 0, 0);
     lv_obj_clear_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(ring, LV_OBJ_FLAG_CLICKABLE);
   }
 }
 
-/** Radial line at `sweepAngleDeg`, 0° = north (up), increasing clockwise. */
+/**
+ * Phosphor trail + bright leading edge (DeskRad / firmware): 25 radial rays
+ * over a 30° arc behind the sweep with quadratic brightness, then a full
+ * green sweep line at the leading edge.
+ */
 void build_sweep(lv_obj_t* disc, float sweepAngleDeg) {
-  const float rad = sweepAngleDeg * kPi / 180.0f;
-  const float r = static_cast<float>(kRadarDiscPx) / 2.0f;
+  const float r = static_cast<float>(kRadarDiscPx) / 2.0f - 1.0f;
   const lv_coord_t cx = kRadarDiscPx / 2;
   const lv_coord_t cy = kRadarDiscPx / 2;
 
+  for (int i = 1; i <= kTrailSlices; ++i) {
+    const float frac = static_cast<float>(i) / static_cast<float>(kTrailSlices);
+    const float ang = sweepAngleDeg - kTrailArcDeg * (1.0f - frac);
+    const int g6 = static_cast<int>(63.0f * frac * frac);
+    const int g = g6 < 1 ? 1 : g6;
+    const uint8_t green = static_cast<uint8_t>((g * 255) / 63);
+
+    g_trail_points[i - 1][0] = {cx, cy};
+    sweep_endpoint(ang, cx, cy, r, g_trail_points[i - 1][1]);
+
+    lv_obj_t* ray = lv_line_create(disc);
+    lv_obj_set_pos(ray, 0, 0);
+    lv_line_set_points(ray, g_trail_points[i - 1], 2);
+    lv_obj_set_style_line_width(ray, 3, 0);
+    lv_obj_set_style_line_color(ray, lv_color_make(0, green, 0), 0);
+    lv_obj_set_style_line_opa(ray, LV_OPA_COVER, 0);
+    lv_obj_set_style_line_rounded(ray, false, 0);
+    lv_obj_clear_flag(ray, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(ray, LV_OBJ_FLAG_SCROLLABLE);
+  }
+
   g_sweep_points[0] = {cx, cy};
-  g_sweep_points[1] = {
-      static_cast<lv_coord_t>(cx + r * std::sin(rad)),
-      static_cast<lv_coord_t>(cy - r * std::cos(rad)),
-  };
+  sweep_endpoint(sweepAngleDeg, cx, cy, r, g_sweep_points[1]);
 
   lv_obj_t* line = lv_line_create(disc);
   lv_obj_set_pos(line, 0, 0);
@@ -87,11 +121,21 @@ void build_dots(lv_obj_t* disc, const desk_display::RadarView& v) {
       v.blipCount < static_cast<std::size_t>(kMaxDots) ? v.blipCount : kMaxDots;
   for (std::size_t i = 0; i < count; ++i) {
     const auto& b = v.blips[i];
+    if (b.litAgeMs >= desk_display::kRadarBlipFadeMs) {
+      continue;
+    }
+    const float ageFrac =
+        static_cast<float>(b.litAgeMs) /
+        static_cast<float>(desk_display::kRadarBlipFadeMs);
+    const float alpha = 1.0f - ageFrac * 0.88f;
+    const lv_opa_t opa = static_cast<lv_opa_t>(
+        clampf(alpha * 255.0f, 20.0f, 255.0f));
+
     lv_obj_t* dot = lv_obj_create(disc);
     lv_obj_set_size(dot, kDotPx, kDotPx);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(dot, rgb(kDotColor), 0);
-    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(dot, opa, 0);
     lv_obj_set_style_border_width(dot, 0, 0);
     lv_obj_set_style_pad_all(dot, 0, 0);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);

@@ -3,6 +3,7 @@
 #include "desk_display/radar_format.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -18,6 +19,18 @@ void copyCallsign(char* dst, std::size_t dstLen, const char* src) {
     return;
   }
   std::snprintf(dst, dstLen, "%s", src);
+}
+
+bool callsignInSource(const AircraftList& source, const char* callsign) {
+  if (!callsign || callsign[0] == '\0') {
+    return false;
+  }
+  for (std::size_t i = 0; i < source.count; ++i) {
+    if (std::strcmp(source.items[i].callsign, callsign) == 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -73,6 +86,120 @@ void ScreenRadar::restoreSelectionByCallsign(const char* callsign) {
   clearSelection();
 }
 
+float ScreenRadar::bearingDegFromOffset(float offsetXMi, float offsetYMi) {
+  // atan2(east, north) → clockwise degrees from north.
+  float deg = std::atan2(offsetXMi, offsetYMi) * 180.0f /
+              3.14159265358979323846f;
+  deg = std::fmod(deg, 360.0f);
+  if (deg < 0.0f) {
+    deg += 360.0f;
+  }
+  return deg;
+}
+
+void ScreenRadar::paintBlipFromAircraft(const Aircraft& ac) {
+  if (!ac.hasPosition) {
+    return;
+  }
+  float x = 0.0f;
+  float y = 0.0f;
+  aircraftOffsetMiles(centerLat_, centerLon_, ac.lat, ac.lon, x, y);
+  const float dist = std::sqrt(x * x + y * y);
+  if (dist > rangeMiles_ + 0.01f) {
+    return;
+  }
+
+  for (std::size_t i = 0; i < blips_.count; ++i) {
+    if (std::strcmp(blips_.items[i].aircraft.callsign, ac.callsign) == 0) {
+      blips_.items[i].aircraft = ac;
+      blips_.items[i].offsetXMi = x;
+      blips_.items[i].offsetYMi = y;
+      blips_.items[i].litAgeMs = 0;
+      return;
+    }
+  }
+
+  if (blips_.count >= kMaxAircraft) {
+    return;
+  }
+  RadarBlip& b = blips_.items[blips_.count++];
+  b.aircraft = ac;
+  b.offsetXMi = x;
+  b.offsetYMi = y;
+  b.litAgeMs = 0;
+}
+
+void ScreenRadar::paintSweepAtAngle(float sweepDeg) {
+  AircraftList filtered{};
+  filterAircraftByRange(source_, centerLat_, centerLon_, rangeMiles_, filtered);
+
+  for (std::size_t i = 0; i < filtered.count; ++i) {
+    const Aircraft& ac = filtered.items[i];
+    float x = 0.0f;
+    float y = 0.0f;
+    aircraftOffsetMiles(centerLat_, centerLon_, ac.lat, ac.lon, x, y);
+    const float brg = bearingDegFromOffset(x, y);
+    const float after = std::fmod(sweepDeg - brg + 360.0f, 360.0f);
+    if (after < kRadarSweepGateDeg) {
+      paintBlipFromAircraft(ac);
+    }
+  }
+
+  // Drop displayed blips no longer in source when the sweep covers them.
+  for (std::size_t i = 0; i < blips_.count;) {
+    const RadarBlip& b = blips_.items[i];
+    const float brg = bearingDegFromOffset(b.offsetXMi, b.offsetYMi);
+    const float after = std::fmod(sweepDeg - brg + 360.0f, 360.0f);
+    if (after < kRadarSweepGateDeg &&
+        !callsignInSource(source_, b.aircraft.callsign)) {
+      char selectedCallsign[kMaxCallsign]{};
+      const bool hadSelection =
+          captureSelectionCallsign(selectedCallsign, sizeof(selectedCallsign));
+      for (std::size_t j = i + 1; j < blips_.count; ++j) {
+        blips_.items[j - 1] = blips_.items[j];
+      }
+      --blips_.count;
+      if (hadSelection) {
+        restoreSelectionByCallsign(selectedCallsign);
+      }
+      continue;
+    }
+    ++i;
+  }
+}
+
+void ScreenRadar::pruneDisplayedOutsideRange() {
+  char selectedCallsign[kMaxCallsign]{};
+  const bool hadSelection =
+      captureSelectionCallsign(selectedCallsign, sizeof(selectedCallsign));
+
+  std::size_t w = 0;
+  for (std::size_t i = 0; i < blips_.count; ++i) {
+    const float dist = std::sqrt(blips_.items[i].offsetXMi * blips_.items[i].offsetXMi +
+                                 blips_.items[i].offsetYMi * blips_.items[i].offsetYMi);
+    if (dist <= rangeMiles_ + 0.01f) {
+      if (w != i) {
+        blips_.items[w] = blips_.items[i];
+      }
+      ++w;
+    }
+  }
+  blips_.count = w;
+
+  if (hadSelection) {
+    restoreSelectionByCallsign(selectedCallsign);
+  }
+}
+
+void ScreenRadar::reprojectDisplayedOffsets() {
+  for (std::size_t i = 0; i < blips_.count; ++i) {
+    RadarBlip& b = blips_.items[i];
+    aircraftOffsetMiles(centerLat_, centerLon_, b.aircraft.lat, b.aircraft.lon,
+                        b.offsetXMi, b.offsetYMi);
+  }
+  pruneDisplayedOutsideRange();
+}
+
 void ScreenRadar::bind(const AircraftList& list) {
   char selectedCallsign[kMaxCallsign]{};
   const bool hadSelection =
@@ -80,21 +207,51 @@ void ScreenRadar::bind(const AircraftList& list) {
 
   source_ = list;
   ready_ = true;
-  rebuildBlips();
+
+  if (mode_ == RadarMode::Detail) {
+    rebuildBlips();
+  }
+  // ClassicSweep: leave displayed blips in place; onTick paints as the sweep
+  // crosses each aircraft (matches DeskRad — no full-screen jump on poll).
 
   if (hadSelection) {
-    restoreSelectionByCallsign(selectedCallsign);
-  } else {
-    hasSelection_ = false;
-    selectedIndex_ = 0;
+    if (!callsignInSource(source_, selectedCallsign)) {
+      clearSelection();
+    } else {
+      restoreSelectionByCallsign(selectedCallsign);
+    }
   }
 }
 
 void ScreenRadar::onTick(uint32_t elapsedMs) {
-  sweepAngleDeg_ += static_cast<float>(elapsedMs) * kRadarSweepDegPerSec / 1000.0f;
-  sweepAngleDeg_ = std::fmod(sweepAngleDeg_, 360.0f);
-  if (sweepAngleDeg_ < 0.0f) {
-    sweepAngleDeg_ += 360.0f;
+  if (elapsedMs == 0) {
+    return;
+  }
+
+  for (std::size_t i = 0; i < blips_.count; ++i) {
+    const uint32_t age = blips_.items[i].litAgeMs;
+    const uint32_t next = age + elapsedMs;
+    blips_.items[i].litAgeMs = next < age ? UINT32_MAX : next;
+  }
+
+  if (mode_ != RadarMode::ClassicSweep) {
+    return;
+  }
+
+  // Step the sweep so a large elapsedMs still paints every gate (DeskRad
+  // illuminates when (sweep - bearing) mod 360 < GATE).
+  constexpr float kStepDeg = 2.0f;
+  float remainingDeg =
+      static_cast<float>(elapsedMs) * kRadarSweepDegPerSec / 1000.0f;
+  while (remainingDeg > 0.0f) {
+    const float step = remainingDeg < kStepDeg ? remainingDeg : kStepDeg;
+    sweepAngleDeg_ += step;
+    sweepAngleDeg_ = std::fmod(sweepAngleDeg_, 360.0f);
+    if (sweepAngleDeg_ < 0.0f) {
+      sweepAngleDeg_ += 360.0f;
+    }
+    paintSweepAtAngle(sweepAngleDeg_);
+    remainingDeg -= step;
   }
 }
 
@@ -110,6 +267,9 @@ void ScreenRadar::toggleMode() {
   mode_ = (mode_ == RadarMode::ClassicSweep) ? RadarMode::Detail
                                              : RadarMode::ClassicSweep;
   clearSelection();
+  if (ready_ && mode_ == RadarMode::Detail) {
+    rebuildBlips();
+  }
 }
 
 void ScreenRadar::onRotate(int delta) {
@@ -240,6 +400,7 @@ void ScreenRadar::rebuildBlips() {
     b.aircraft = filtered.items[i];
     aircraftOffsetMiles(centerLat_, centerLon_, b.aircraft.lat, b.aircraft.lon,
                         b.offsetXMi, b.offsetYMi);
+    b.litAgeMs = 0;
     ++blips_.count;
   }
 
@@ -254,8 +415,13 @@ void ScreenRadar::applyRange(float rangeMiles) {
     return;
   }
   rangeMiles_ = clamped;
-  if (ready_) {
+  if (!ready_) {
+    return;
+  }
+  if (mode_ == RadarMode::Detail) {
     rebuildBlips();
+  } else {
+    reprojectDisplayedOffsets();
   }
 }
 
@@ -264,8 +430,13 @@ void ScreenRadar::setActiveCenter(double lat, double lon, bool temp) {
   centerLon_ = lon;
   isTempCenter_ = temp;
   clearSelection();
-  if (ready_) {
+  if (!ready_) {
+    return;
+  }
+  if (mode_ == RadarMode::Detail) {
     rebuildBlips();
+  } else {
+    std::memset(&blips_, 0, sizeof(blips_));
   }
 }
 

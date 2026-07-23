@@ -31,6 +31,11 @@ static Airport loadAirportFixture() {
   return a;
 }
 
+/** Classic mode paints blips only as the sweep crosses them. */
+static void paintFullRevolution(ScreenRadar& screen) {
+  screen.onTick(kRadarSweepPeriodMs);
+}
+
 void test_radar_defaults_and_ready(void) {
   ScreenRadar screen;
   TEST_ASSERT_FALSE(screen.ready());
@@ -48,6 +53,8 @@ void test_radar_defaults_and_ready(void) {
   const AircraftList list = loadAdsbFixture();
   screen.bind(list);
   TEST_ASSERT_TRUE(screen.ready());
+  TEST_ASSERT_EQUAL(0, screen.blipCount());  // Classic: nothing until sweep
+  paintFullRevolution(screen);
   TEST_ASSERT_TRUE(screen.blipCount() > 0);
 
   screen.unbind();
@@ -59,6 +66,7 @@ void test_radar_range_clamp_and_zoom(void) {
   ScreenRadar screen;
   const AircraftList list = loadAdsbFixture();
   screen.bind(list);
+  paintFullRevolution(screen);
 
   const std::size_t at25 = screen.blipCount();
 
@@ -75,11 +83,13 @@ void test_radar_range_clamp_and_zoom(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 10.0f, screen.rangeMiles());
   screen.onRotate(3);
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 25.0f, screen.rangeMiles());
-  TEST_ASSERT_EQUAL(at25, screen.blipCount());
+  // Classic zoom does not re-paint; count stays at pruned set until sweep.
+  TEST_ASSERT_TRUE(screen.blipCount() <= at25);
 }
 
 void test_radar_filter_blips_and_offsets(void) {
   ScreenRadar screen;
+  screen.toggleMode();  // Detail: immediate full blip list
   const AircraftList list = loadAdsbFixture();
   screen.bind(list);
 
@@ -120,6 +130,7 @@ void test_radar_mode_toggle(void) {
   screen.toggleMode();
   TEST_ASSERT_EQUAL(static_cast<int>(RadarMode::Detail),
                     static_cast<int>(screen.mode()));
+  TEST_ASSERT_TRUE(screen.blipCount() > 0);
 
   TEST_ASSERT_TRUE(screen.selectBlip(0));
   TEST_ASSERT_TRUE(screen.hasSelection());
@@ -132,6 +143,7 @@ void test_radar_mode_toggle(void) {
 
 void test_radar_select_detail_card(void) {
   ScreenRadar screen;
+  screen.toggleMode();  // Detail for immediate blips
   screen.bind(loadAdsbFixture());
   TEST_ASSERT_FALSE(screen.selectBlip(999));
   TEST_ASSERT_FALSE(screen.hasSelection());
@@ -202,14 +214,37 @@ void test_radar_sweep_advances_and_wraps(void) {
   screen.bind(loadAdsbFixture());
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, screen.view().sweepAngleDeg);
   screen.onTick(1000);
-  TEST_ASSERT_FLOAT_WITHIN(0.5f, 150.0f, screen.view().sweepAngleDeg);
-  screen.onTick(2000);  // +300 → 450 → 90
-  TEST_ASSERT_FLOAT_WITHIN(0.5f, 90.0f, screen.view().sweepAngleDeg);
+  // 10 s/rev → 36 deg/s
+  TEST_ASSERT_FLOAT_WITHIN(0.5f, 36.0f, screen.view().sweepAngleDeg);
+  screen.onTick(10000);  // +360 → wrap to same angle
+  TEST_ASSERT_FLOAT_WITHIN(0.5f, 36.0f, screen.view().sweepAngleDeg);
+}
+
+void test_radar_classic_paints_on_sweep_not_bind(void) {
+  ScreenRadar screen;
+  const AircraftList list = loadAdsbFixture();
+  screen.bind(list);
+  TEST_ASSERT_EQUAL(0, screen.blipCount());
+
+  // Move slightly — still empty until a bearing is gated.
+  screen.onTick(50);
+  // After a full revolution every in-range aircraft has been painted once.
+  paintFullRevolution(screen);
+  AircraftList expected{};
+  const std::size_t n = filterAircraftByRange(
+      list, kRadarHomeLat, kRadarHomeLon, kRadarDefaultRangeMi, expected);
+  TEST_ASSERT_EQUAL(n, screen.blipCount());
+
+  // Re-bind with same data must not wipe displayed blips (no poll glitch).
+  const std::size_t before = screen.blipCount();
+  screen.bind(list);
+  TEST_ASSERT_EQUAL(before, screen.blipCount());
 }
 
 void test_radar_bind_preserves_selection_by_callsign(void) {
   ScreenRadar screen;
   AircraftList list = loadAdsbFixture();
+  screen.toggleMode();  // Detail
   screen.bind(list);
   std::size_t idx = 0;
   bool found = false;
@@ -230,6 +265,7 @@ void test_radar_bind_preserves_selection_by_callsign(void) {
 void test_radar_bind_clears_selection_when_gone(void) {
   ScreenRadar screen;
   AircraftList list = loadAdsbFixture();
+  screen.toggleMode();
   screen.bind(list);
   TEST_ASSERT_TRUE(screen.selectBlip(0));
   AircraftList other{};
@@ -245,6 +281,7 @@ void test_radar_bind_clears_selection_when_gone(void) {
 void test_radar_zoom_preserves_selection_by_callsign(void) {
   ScreenRadar screen;
   const AircraftList list = loadAdsbFixture();
+  screen.toggleMode();  // Detail — index/callsign list stable on zoom rebuild
   screen.bind(list);
 
   constexpr const char* kTarget = "N5953Q";
@@ -374,6 +411,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_parse_adsb_calc_track_and_geom_rate_fallback);
   RUN_TEST(test_parse_adsb_missing_track_rate);
   RUN_TEST(test_radar_sweep_advances_and_wraps);
+  RUN_TEST(test_radar_classic_paints_on_sweep_not_bind);
   RUN_TEST(test_radar_bind_preserves_selection_by_callsign);
   RUN_TEST(test_radar_bind_clears_selection_when_gone);
   RUN_TEST(test_radar_zoom_preserves_selection_by_callsign);

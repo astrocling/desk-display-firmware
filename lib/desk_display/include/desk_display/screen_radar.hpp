@@ -19,8 +19,18 @@ constexpr float kRadarDefaultRangeMi = 25.0f;
 /** Encoder zoom step (miles). */
 constexpr float kRadarRangeStepMi = 5.0f;
 
+/** Classic sweep period — matches DeskRad / firmware (10 s per revolution). */
+constexpr uint32_t kRadarSweepPeriodMs = 10000;
+
 /** Classic sweep rotation speed (degrees per second). */
-constexpr float kRadarSweepDegPerSec = 150.0f;
+constexpr float kRadarSweepDegPerSec =
+    360.0f / (static_cast<float>(kRadarSweepPeriodMs) / 1000.0f);
+
+/** Sweep illuminates a blip for this many degrees after its bearing. */
+constexpr float kRadarSweepGateDeg = 5.0f;
+
+/** Phosphor fade after a paint (ms). */
+constexpr uint32_t kRadarBlipFadeMs = 9000;
 
 enum class RadarMode : uint8_t {
   ClassicSweep = 0,
@@ -32,6 +42,8 @@ struct RadarBlip {
   Aircraft aircraft;
   float offsetXMi;  // +east
   float offsetYMi;  // +north
+  /** Ms since last sweep paint; used for Classic phosphor fade. */
+  uint32_t litAgeMs;
 };
 
 /** Selected aircraft detail card fields. */
@@ -78,10 +90,18 @@ class ScreenRadar {
 
   void reset();
 
-  /** Copy aircraft list and rebuild blips for current center/range. */
+  /**
+   * Ingest latest ADS-B list.
+   * Detail: rebuild displayed blips immediately.
+   * ClassicSweep: keep displayed positions; paint updates when the sweep
+   * crosses each aircraft (avoids a full-screen jump every poll).
+   */
   void bind(const AircraftList& list);
 
-  /** Advance classic sweep angle (degrees, wraps [0, 360)). */
+  /**
+   * Advance classic sweep; paint any blips whose bearing enters the gate.
+   * Ages Classic phosphor fade timers.
+   */
   void onTick(uint32_t elapsedMs);
 
   /** Clear bound data; not ready until bind again. */
@@ -142,6 +162,7 @@ class ScreenRadar {
   RadarView view() const;
 
  private:
+  /** Immediate full refresh of displayed blips from source_ (Detail / zoom). */
   void rebuildBlips();
   void applyRange(float rangeMiles);
   void setActiveCenter(double lat, double lon, bool temp);
@@ -150,6 +171,13 @@ class ScreenRadar {
   bool captureSelectionCallsign(char* dst, std::size_t dstLen) const;
   /** Re-find callsign in blips_; clear selection if missing. */
   void restoreSelectionByCallsign(const char* callsign);
+
+  /** Bearing clockwise from north (degrees) for an offset, [0, 360). */
+  static float bearingDegFromOffset(float offsetXMi, float offsetYMi);
+  void paintBlipFromAircraft(const Aircraft& ac);
+  void paintSweepAtAngle(float sweepDeg);
+  void pruneDisplayedOutsideRange();
+  void reprojectDisplayedOffsets();
 
   bool ready_;
   RadarMode mode_;
