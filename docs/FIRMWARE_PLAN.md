@@ -104,7 +104,7 @@ Two nested knob modes, consistent across every screen:
   - Night (9pm–7am local) → moon icon, row dimmed
 
 **Knob interaction:**
-- Rotate = scrub the anchor's time forward/back (15-min steps); all rows update in
+- Rotate = scrub the anchor's time forward/back (1-hour steps); all rows update in
   sync relative to the anchor
 - Tap a row = make that row the new anchor
 - Double-tap / long-press = reset instantly to live time, anchor back to Eastern

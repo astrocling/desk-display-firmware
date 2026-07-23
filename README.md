@@ -6,13 +6,34 @@ ESP32-S3 firmware for the **Waveshare ESP32-S3-Knob-Touch-LCD-1.8** ("Dial") des
 
 ## Current status
 
-No Dial hardware yet. **Tracks 0–C are done** on the host (scaffold, API parsers, nav shell, screen view-models). Tracks D–E (display/touch/encoder HAL + on-device wire-up) wait for the Dial.
+No Dial hardware yet. **Tracks 0–C are done** on the host (scaffold, API parsers, nav shell, screen view-models). An **SDL + LVGL desktop simulator** is available. Tracks D–E (display/touch/encoder HAL + on-device wire-up) wait for the Dial.
+
+### Unit tests
 
 ```bash
 pio test -e native   # 65 cases — parsers, domain, nav, all screen models
 ```
 
-Shared logic lives in `lib/desk_display/` (models, parsers, `Nav`, `ScreenClock` / `ScreenTimezones` / weather / sports / radar view-models). LVGL rendering and Wi-Fi/HTTP on-device come with hardware.
+### Desktop simulator
+
+Requires SDL2 (`brew install sdl2` — this machine uses `sdl2-compat`).
+
+```bash
+pio run -e sim -t upload
+```
+
+Keyboard (encoder has no click — Enter = center tap):
+
+| Key | Action |
+|-----|--------|
+| `←` / `→` or `[` / `]` or `A` / `D` | Rotate |
+| `Enter` / `Space` | Center tap (enter screen / back to carousel) |
+| `T` | Tap (screen action) |
+| `Y` | Double-tap |
+| `U` | Long-press |
+| `Esc` / `Q` | Quit |
+
+Boots on **Focused Clock** with fixtures from `fixtures/`. Shared logic lives in `lib/desk_display/`; sim UI is under `src/sim/`.
 
 ## Setup
 

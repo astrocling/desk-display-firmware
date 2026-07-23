@@ -12,5 +12,10 @@ constexpr uint32_t kAccent = 0x3D9CF0;  // primary accent (links, focus ring)
 constexpr uint32_t kDim = 0x6B7280;     // secondary / muted text
 constexpr uint32_t kAlert = 0xE85D4C;   // warnings / attention
 
+/** Timezone board row status icons. */
+constexpr uint32_t kStatusWorking = 0x34D399;  // green — work hours
+constexpr uint32_t kStatusAwake = 0xF5A623;    // amber — awake off-hours
+constexpr uint32_t kStatusNight = 0x9AA8C7;    // moon / night
+
 }  // namespace theme
 }  // namespace desk_display

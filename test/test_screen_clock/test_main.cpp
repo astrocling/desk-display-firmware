@@ -68,13 +68,26 @@ void test_clock_timezone_hint_toggle(void) {
   TEST_ASSERT_TRUE(clock.view().timezoneBoardHint);
 }
 
-void test_clock_set_unix_utc(void) {
+void test_clock_set_unix_utc_shows_home_eastern(void) {
   ScreenClock clock;
-  // 2026-07-23 16:00:00 UTC
+  // 2026-07-23 16:00:00 UTC → 12:00:00 Eastern (UTC-4, EDT)
   clock.setUnixUtc(1784822400);
   TEST_ASSERT_EQUAL(2026, clock.view().year);
   TEST_ASSERT_EQUAL(7, clock.view().month);
   TEST_ASSERT_EQUAL(23, clock.view().day);
+  TEST_ASSERT_EQUAL(12, clock.view().hour);
+  TEST_ASSERT_EQUAL(0, clock.view().minute);
+  TEST_ASSERT_EQUAL(0, clock.view().second);
+  TEST_ASSERT_EQUAL_STRING("Thu, Jul 23", clock.dateText());
+
+  // 2026-07-24 02:30:00 UTC → 2026-07-23 22:30:00 Eastern (date rolls back)
+  clock.setUnixUtc(1784822400 + 10 * 3600 + 30 * 60);
+  TEST_ASSERT_EQUAL(2026, clock.view().year);
+  TEST_ASSERT_EQUAL(7, clock.view().month);
+  TEST_ASSERT_EQUAL(23, clock.view().day);
+  TEST_ASSERT_EQUAL(22, clock.view().hour);
+  TEST_ASSERT_EQUAL(30, clock.view().minute);
+  TEST_ASSERT_EQUAL(0, clock.view().second);
   TEST_ASSERT_EQUAL_STRING("Thu, Jul 23", clock.dateText());
 }
 
@@ -90,6 +103,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_clock_date_formatting_other_weekdays);
   RUN_TEST(test_clock_hand_angles);
   RUN_TEST(test_clock_timezone_hint_toggle);
-  RUN_TEST(test_clock_set_unix_utc);
+  RUN_TEST(test_clock_set_unix_utc_shows_home_eastern);
   return UNITY_END();
 }

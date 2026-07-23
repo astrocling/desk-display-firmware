@@ -41,11 +41,11 @@ void test_timezone_row_status_daylight_override(void) {
                     static_cast<int>(timezoneRowStatus(8, false)));
 }
 
-void test_scrub_offset_fifteen_minutes(void) {
+void test_scrub_offset_one_hour(void) {
   const std::int64_t anchor = 1'000'000;
-  TEST_ASSERT_EQUAL_INT64(anchor + 15 * 60, applyScrubOffset(anchor, 1));
-  TEST_ASSERT_EQUAL_INT64(anchor - 15 * 60, applyScrubOffset(anchor, -1));
-  TEST_ASSERT_EQUAL_INT64(anchor + 4 * 15 * 60, applyScrubOffset(anchor, 4));
+  TEST_ASSERT_EQUAL_INT64(anchor + 60 * 60, applyScrubOffset(anchor, 1));
+  TEST_ASSERT_EQUAL_INT64(anchor - 60 * 60, applyScrubOffset(anchor, -1));
+  TEST_ASSERT_EQUAL_INT64(anchor + 4 * 60 * 60, applyScrubOffset(anchor, 4));
   TEST_ASSERT_EQUAL_INT64(anchor, applyScrubOffset(anchor, 0));
 }
 
@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
   UNITY_BEGIN();
   RUN_TEST(test_timezone_row_status_windows);
   RUN_TEST(test_timezone_row_status_daylight_override);
-  RUN_TEST(test_scrub_offset_fifteen_minutes);
+  RUN_TEST(test_scrub_offset_one_hour);
   RUN_TEST(test_wmo_to_icon);
   RUN_TEST(test_radar_clamp_range);
   RUN_TEST(test_radar_offset_and_distance);

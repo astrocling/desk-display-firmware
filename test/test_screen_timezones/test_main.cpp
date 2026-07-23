@@ -49,26 +49,26 @@ void test_default_anchor_eastern(void) {
 
 void test_scrub_steps_update_displayed_times(void) {
   ScreenTimezones board;
-  // 12:00 UTC → Eastern 08:00 with fixed -4 offset
+  // 12:00 UTC → Eastern 8:00 AM with fixed -4 offset
   board.setLiveUnix(12 * 3600);
   TimezoneBoardView v = board.view();
-  TEST_ASSERT_EQUAL_STRING("08:00", v.rows[0].timeText);
-  TEST_ASSERT_EQUAL_STRING("07:00", v.rows[1].timeText);  // Chicago -5
-  TEST_ASSERT_EQUAL_STRING("05:00", v.rows[2].timeText);  // LA -7
-  TEST_ASSERT_EQUAL_STRING("12:00", v.rows[3].timeText);  // GMT
-  TEST_ASSERT_EQUAL_STRING("14:00", v.rows[4].timeText);  // Rome +2
+  TEST_ASSERT_EQUAL_STRING("8:00 AM", v.rows[0].timeText);
+  TEST_ASSERT_EQUAL_STRING("7:00 AM", v.rows[1].timeText);  // Chicago -5
+  TEST_ASSERT_EQUAL_STRING("5:00 AM", v.rows[2].timeText);  // LA -7
+  TEST_ASSERT_EQUAL_STRING("12:00 PM", v.rows[3].timeText);  // GMT
+  TEST_ASSERT_EQUAL_STRING("2:00 PM", v.rows[4].timeText);  // Rome +2
 
   board.onRotate(1);
   TEST_ASSERT_EQUAL(1, board.scrubSteps());
   TEST_ASSERT_EQUAL_INT64(applyScrubOffset(12 * 3600, 1), board.scrubbedUnix());
   v = board.view();
-  TEST_ASSERT_EQUAL_STRING("08:15", v.rows[0].timeText);
-  TEST_ASSERT_EQUAL_STRING("12:15", v.rows[3].timeText);
+  TEST_ASSERT_EQUAL_STRING("9:00 AM", v.rows[0].timeText);
+  TEST_ASSERT_EQUAL_STRING("1:00 PM", v.rows[3].timeText);
 
   board.onRotate(-3);
   TEST_ASSERT_EQUAL(-2, board.scrubSteps());
   v = board.view();
-  TEST_ASSERT_EQUAL_STRING("07:30", v.rows[0].timeText);
+  TEST_ASSERT_EQUAL_STRING("6:00 AM", v.rows[0].timeText);
 }
 
 void test_anchor_change_on_tap(void) {
@@ -82,7 +82,7 @@ void test_anchor_change_on_tap(void) {
   TEST_ASSERT_TRUE(v.rows[3].isAnchor);
   TEST_ASSERT_FALSE(v.rows[0].isAnchor);
   // Absolute times unchanged by anchor alone
-  TEST_ASSERT_EQUAL_STRING("12:30", v.rows[3].timeText);
+  TEST_ASSERT_EQUAL_STRING("2:00 PM", v.rows[3].timeText);
 }
 
 void test_double_tap_resets_scrub_and_anchor(void) {

@@ -1,5 +1,7 @@
 #include "desk_display/screen_clock.hpp"
 
+#include "desk_display/screen_timezones.hpp"
+
 #include <cstdio>
 #include <ctime>
 
@@ -46,7 +48,11 @@ void ScreenClock::setTime(int year, int month, int day, int hour, int minute,
 }
 
 void ScreenClock::setUnixUtc(std::int64_t unixSeconds) {
-  const std::time_t t = static_cast<std::time_t>(unixSeconds);
+  // Home clock = Eastern (timezone board row 0). Shift UTC then decode as
+  // "UTC" so civil fields match local time without depending on host TZ.
+  const int offHours = timezoneBoardUtcOffsetHours(0);
+  const std::time_t t = static_cast<std::time_t>(
+      unixSeconds + static_cast<std::int64_t>(offHours) * 3600);
   std::tm tm{};
 #if defined(_WIN32)
   gmtime_s(&tm, &t);

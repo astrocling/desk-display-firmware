@@ -1,5 +1,6 @@
 #include "desk_display/screen_timezones.hpp"
 
+#include "desk_display/format_time.hpp"
 #include "desk_display/scrub.hpp"
 
 #include <cstdio>
@@ -211,7 +212,7 @@ void ScreenTimezones::fillRowView(TimezoneBoardRowView& out, std::size_t row,
   } else {
     minute = positiveMod(floorDiv(scrubbed, 60), 60);
   }
-  std::snprintf(out.timeText, sizeof(out.timeText), "%02d:%02d", hour, minute);
+  format12Hour(out.timeText, sizeof(out.timeText), hour, minute);
 
   if (hasSun_) {
     out.status = timezoneRowStatus(hour, isDaylightForRow(row, scrubbed));

@@ -32,7 +32,10 @@ class ScreenClock {
   /** Set civil time (preferred for deterministic tests). Month 1–12. */
   void setTime(int year, int month, int day, int hour, int minute, int second);
 
-  /** Set from UTC unix seconds (deterministic via gmtime). */
+  /**
+   * Set from UTC unix seconds. Displays home civil time (Eastern / board row 0),
+   * using the same fixed UTC offset as the timezone board (no TZDB yet).
+   */
   void setUnixUtc(std::int64_t unixSeconds);
 
   /** Whether to show the small hint that the timezone board exists. */

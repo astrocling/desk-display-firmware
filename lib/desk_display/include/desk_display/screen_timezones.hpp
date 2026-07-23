@@ -10,7 +10,7 @@ namespace desk_display {
 
 constexpr std::size_t kTimezoneBoardRows = 7;
 constexpr std::size_t kTimezoneLabelLen = 24;
-constexpr std::size_t kTimezoneTimeTextLen = 8;
+constexpr std::size_t kTimezoneTimeTextLen = 12;  // "12:00 PM"
 
 /**
  * Fixed board order (matches firmware config / TIMEZONE_IANA).
@@ -34,7 +34,7 @@ using LocalHourFn = int (*)(std::size_t rowIndex, std::int64_t scrubbedUnix,
 struct TimezoneBoardRowView {
   char label[kTimezoneLabelLen];
   char iana[kMaxIanaLen];
-  char timeText[kTimezoneTimeTextLen];  // "HH:MM" 24h
+  char timeText[kTimezoneTimeTextLen];  // "h:mm AM/PM"
   int localHour;                        // 0–23
   TzRowStatus status;
   bool isAnchor;
@@ -81,7 +81,7 @@ class ScreenTimezones {
   std::int64_t liveUnix() const { return liveUnix_; }
   std::int64_t scrubbedUnix() const;
 
-  /** Encoder rotate while focused: ±1 tick = ±15 minutes. */
+  /** Encoder rotate while focused: ±1 tick = ±1 hour. */
   void onRotate(int deltaSteps);
 
   /** Tap a row to make it the scrub anchor (0 .. kTimezoneBoardRows-1). */
