@@ -148,7 +148,7 @@ bool hal_init() {
                "  Click the window first if keys do nothing.\n"
                "  Left/Right or [/] or A/D  rotate\n"
                "  Enter/Space              center tap (knob click)\n"
-               "  T                       tap\n"
+               "  Mouse click / T          tap\n"
                "  Y                       double-tap\n"
                "  U                       long-press\n"
                "  Esc/Q                   quit\n");
@@ -185,6 +185,10 @@ bool hal_poll(bool& quit) {
           SDL_RenderWindowToLogical(renderer_, e.button.x, e.button.y, &lx, &ly);
           mouse_x_ = static_cast<int>(lx);
           mouse_y_ = static_cast<int>(ly);
+          // Mouse click maps to capacitive tap (device touch → KeyEvents.tap).
+          pending_.tap = true;
+          pending_.tap_x = static_cast<int16_t>(mouse_x_);
+          pending_.tap_y = static_cast<int16_t>(mouse_y_);
         }
         break;
       case SDL_MOUSEMOTION: {

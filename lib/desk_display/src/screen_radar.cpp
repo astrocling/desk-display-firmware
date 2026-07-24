@@ -207,12 +207,8 @@ void ScreenRadar::bind(const AircraftList& list) {
 
   source_ = list;
   ready_ = true;
-
-  if (mode_ == RadarMode::Detail) {
-    rebuildBlips();
-  }
-  // ClassicSweep: leave displayed blips in place; onTick paints as the sweep
-  // crosses each aircraft (matches DeskRad — no full-screen jump on poll).
+  // Leave displayed blips in place; onTick paints as the sweep crosses each
+  // aircraft (matches DeskRad — no full-screen jump on poll).
 
   if (hadSelection) {
     if (!callsignInSource(source_, selectedCallsign)) {
@@ -234,12 +230,9 @@ void ScreenRadar::onTick(uint32_t elapsedMs) {
     blips_.items[i].litAgeMs = next < age ? UINT32_MAX : next;
   }
 
-  if (mode_ != RadarMode::ClassicSweep) {
-    return;
-  }
-
   // Step the sweep so a large elapsedMs still paints every gate (DeskRad
-  // illuminates when (sweep - bearing) mod 360 < GATE).
+  // illuminates when (sweep - bearing) mod 360 < GATE). Selection does not
+  // pause the beam.
   constexpr float kStepDeg = 2.0f;
   float remainingDeg =
       static_cast<float>(elapsedMs) * kRadarSweepDegPerSec / 1000.0f;
@@ -263,13 +256,14 @@ void ScreenRadar::unbind() {
   selectedIndex_ = 0;
 }
 
+void ScreenRadar::setMode(RadarMode mode) {
+  mode_ = mode;
+}
+
 void ScreenRadar::toggleMode() {
-  mode_ = (mode_ == RadarMode::ClassicSweep) ? RadarMode::Detail
-                                             : RadarMode::ClassicSweep;
   clearSelection();
-  if (ready_ && mode_ == RadarMode::Detail) {
-    rebuildBlips();
-  }
+  setMode(mode_ == RadarMode::ClassicSweep ? RadarMode::Detail
+                                           : RadarMode::ClassicSweep);
 }
 
 void ScreenRadar::onRotate(int delta) {
@@ -418,11 +412,7 @@ void ScreenRadar::applyRange(float rangeMiles) {
   if (!ready_) {
     return;
   }
-  if (mode_ == RadarMode::Detail) {
-    rebuildBlips();
-  } else {
-    reprojectDisplayedOffsets();
-  }
+  reprojectDisplayedOffsets();
 }
 
 void ScreenRadar::setActiveCenter(double lat, double lon, bool temp) {
@@ -433,11 +423,8 @@ void ScreenRadar::setActiveCenter(double lat, double lon, bool temp) {
   if (!ready_) {
     return;
   }
-  if (mode_ == RadarMode::Detail) {
-    rebuildBlips();
-  } else {
-    std::memset(&blips_, 0, sizeof(blips_));
-  }
+  // New center: clear painted blips; sweep will repaint from source_.
+  std::memset(&blips_, 0, sizeof(blips_));
 }
 
 }  // namespace desk_display

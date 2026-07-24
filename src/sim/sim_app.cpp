@@ -113,11 +113,12 @@ bool SimApp::init() {
   lv_obj_align(chrome_, LV_ALIGN_TOP_MID, 0, 10);
 
   content_ = lv_obj_create(root_);
-  lv_obj_set_size(content_, kDispW - 24, kDispH - 48);
-  lv_obj_align(content_, LV_ALIGN_CENTER, 0, 8);
+  // Near full-bleed so the radar disc can use most of the 360 round display.
+  lv_obj_set_size(content_, kDispW - 8, kDispH - 28);
+  lv_obj_align(content_, LV_ALIGN_CENTER, 0, desk_ui::kRadarContentOffsetY);
   lv_obj_set_style_bg_opa(content_, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(content_, 0, 0);
-  lv_obj_set_style_pad_all(content_, 4, 0);
+  lv_obj_set_style_pad_all(content_, 0, 0);
   lv_obj_clear_flag(content_, LV_OBJ_FLAG_SCROLLABLE);
 
   last_screen_ = desk_display::Screen::Count;
@@ -164,6 +165,7 @@ void SimApp::rebuild_ui_for_active() {
     lv_obj_del(body_);
     body_ = nullptr;
   }
+  desk_ui::radar_lvgl_invalidate();
   body_ = lv_obj_create(content_);
   lv_obj_set_size(body_, lv_pct(100), lv_pct(100));
   lv_obj_set_style_bg_opa(body_, LV_OPA_TRANSP, 0);
@@ -189,12 +191,21 @@ void SimApp::refresh_content() {
   if (!body_) {
     return;
   }
+
+  const Screen scr = nav_.active_screen();
+
+  // Radar: update sweep/traffic in place to avoid a full teardown flash
+  // (especially noticeable when the beam wraps through north).
+  if (scr == Screen::Radar &&
+      desk_ui::radar_lvgl_animate_classic(body_, radar_.view())) {
+    return;
+  }
+
   lv_obj_clean(body_);
+  desk_ui::radar_lvgl_invalidate();
 
   // Carousel and Focused share the same default screen views. Mode only
   // changes input: Carousel rotate cycles screens; Focused rotate is in-app.
-  const Screen scr = nav_.active_screen();
-
   switch (scr) {
     case Screen::Clock: {
       const auto v = clock_.view();
@@ -572,17 +583,16 @@ void SimApp::on_tap_focused(int16_t x, int16_t y) {
       break;
     case Screen::Radar: {
       const auto rv = radar_.view();
-      if (rv.blipCount == 0) {
-        break;
-      }
 
-      // Disc center in absolute display px: root_ is centered on the
-      // display, content_ is centered on root_ with a +8 y offset, and
-      // body_/disc are centered within content_ — see init()/radar_lvgl.
+      // Disc center in absolute display px: root_ is centered on the display,
+      // content_ is centered on root_ with kRadarContentOffsetY, and the disc
+      // is centered within body_/content_.
       constexpr float kDiscCenterX = static_cast<float>(kDispW) / 2.0f;
-      constexpr float kDiscCenterY = static_cast<float>(kDispH) / 2.0f + 8.0f;
-      constexpr float kHitRadiusPx = 20.0f;
-      const float scale = 110.0f / (rv.rangeMiles > 0 ? rv.rangeMiles : 1.0f);
+      constexpr float kDiscCenterY =
+          static_cast<float>(kDispH) / 2.0f +
+          static_cast<float>(desk_ui::kRadarContentOffsetY);
+      constexpr float kHitRadiusPx = 24.0f;
+      const float scale = desk_ui::radar_blip_scale(rv.rangeMiles);
       const float rx = static_cast<float>(x) - kDiscCenterX;
       const float ry = static_cast<float>(y) - kDiscCenterY;
 
@@ -599,10 +609,12 @@ void SimApp::on_tap_focused(int16_t x, int16_t y) {
         }
       }
 
-      if (nearestDistSq >= 0.0f && nearestDistSq <= kHitRadiusPx * kHitRadiusPx) {
+      if (rv.blipCount > 0 && nearestDistSq >= 0.0f &&
+          nearestDistSq <= kHitRadiusPx * kHitRadiusPx) {
         if (radar_.hasSelection() && radar_.selectedIndex() == nearest) {
           radar_.clearSelection();
         } else {
+          // Sweep keeps running; tag + card overlay the live disc.
           radar_.selectBlip(nearest);
         }
       } else {
@@ -629,7 +641,7 @@ void SimApp::on_double_tap_focused() {
       weather_.snapToNow();
       break;
     case Screen::Radar:
-      radar_.toggleMode();
+      radar_.clearSelection();
       break;
     default:
       break;
@@ -708,7 +720,6 @@ void SimApp::handle_input() {
 
 void SimApp::update(uint32_t elapsed_ms) {
   using desk_display::AircraftList;
-  using desk_display::RadarMode;
   using desk_display::Screen;
 
   static uint32_t clock_accum = 0;
@@ -742,9 +753,9 @@ void SimApp::update(uint32_t elapsed_ms) {
 
   if (nav_.active_screen() != last_screen_ || nav_.mode() != last_mode_) {
     rebuild_ui_for_active();
-  } else if (got_fresh || (radar_active && radar_.mode() == RadarMode::ClassicSweep)) {
-    // Refresh every tick while sweeping so the sweep indicator animates
-    // smoothly (well above the ≥15 Hz target at sim frame rate).
+  } else if (got_fresh || radar_active) {
+    // Refresh every tick while Radar is up so the sweep keeps moving even
+    // with a target selected.
     refresh_content();
   }
 }

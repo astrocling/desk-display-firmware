@@ -52,6 +52,7 @@ void screen_radar_show() {
     screen_radar_create();
   }
   lv_obj_clean(g_container);
+  desk_ui::radar_lvgl_invalidate();
   if (g_model) {
     desk_ui::radar_lvgl_build(g_container, g_model->view());
   }

@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include <cstdio>
 #include <cstring>
 
 #include "desk_display/adsb.hpp"
@@ -89,9 +90,9 @@ void test_radar_range_clamp_and_zoom(void) {
 
 void test_radar_filter_blips_and_offsets(void) {
   ScreenRadar screen;
-  screen.toggleMode();  // Detail: immediate full blip list
   const AircraftList list = loadAdsbFixture();
   screen.bind(list);
+  paintFullRevolution(screen);
 
   AircraftList expected{};
   const std::size_t n = filterAircraftByRange(
@@ -100,20 +101,27 @@ void test_radar_filter_blips_and_offsets(void) {
   TEST_ASSERT_TRUE(n > 0);
 
   for (std::size_t i = 0; i < n; ++i) {
-    const RadarBlip& b = screen.blip(i);
-    TEST_ASSERT_EQUAL_STRING(expected.items[i].callsign, b.aircraft.callsign);
+    bool found = false;
+    for (std::size_t j = 0; j < screen.blipCount(); ++j) {
+      const RadarBlip& b = screen.blip(j);
+      if (std::strcmp(expected.items[i].callsign, b.aircraft.callsign) != 0) {
+        continue;
+      }
+      found = true;
+      float x = 0.0f;
+      float y = 0.0f;
+      aircraftOffsetMiles(kRadarHomeLat, kRadarHomeLon, b.aircraft.lat,
+                          b.aircraft.lon, x, y);
+      TEST_ASSERT_FLOAT_WITHIN(0.01f, x, b.offsetXMi);
+      TEST_ASSERT_FLOAT_WITHIN(0.01f, y, b.offsetYMi);
 
-    float x = 0.0f;
-    float y = 0.0f;
-    aircraftOffsetMiles(kRadarHomeLat, kRadarHomeLon, b.aircraft.lat,
-                        b.aircraft.lon, x, y);
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, x, b.offsetXMi);
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, y, b.offsetYMi);
-
-    const float dist =
-        distanceMiles(kRadarHomeLat, kRadarHomeLon, b.aircraft.lat,
-                      b.aircraft.lon);
-    TEST_ASSERT_TRUE(dist <= kRadarDefaultRangeMi + 0.01f);
+      const float dist =
+          distanceMiles(kRadarHomeLat, kRadarHomeLon, b.aircraft.lat,
+                        b.aircraft.lon);
+      TEST_ASSERT_TRUE(dist <= kRadarDefaultRangeMi + 0.01f);
+      break;
+    }
+    TEST_ASSERT_TRUE(found);
   }
 
   // Tight zoom should drop some aircraft vs 25 mi
@@ -124,6 +132,7 @@ void test_radar_filter_blips_and_offsets(void) {
 void test_radar_mode_toggle(void) {
   ScreenRadar screen;
   screen.bind(loadAdsbFixture());
+  paintFullRevolution(screen);
   TEST_ASSERT_EQUAL(static_cast<int>(RadarMode::ClassicSweep),
                     static_cast<int>(screen.mode()));
 
@@ -135,7 +144,17 @@ void test_radar_mode_toggle(void) {
   TEST_ASSERT_TRUE(screen.selectBlip(0));
   TEST_ASSERT_TRUE(screen.hasSelection());
 
-  screen.toggleMode();  // back to sweep — clears selection
+  // Sweep keeps advancing while a target is selected.
+  const float before = screen.view().sweepAngleDeg;
+  screen.onTick(500);  // +18° at 36 deg/s
+  float expected = before + 18.0f;
+  if (expected >= 360.0f) {
+    expected -= 360.0f;
+  }
+  TEST_ASSERT_FLOAT_WITHIN(0.5f, expected, screen.view().sweepAngleDeg);
+  TEST_ASSERT_TRUE(screen.hasSelection());
+
+  screen.toggleMode();  // clears selection
   TEST_ASSERT_EQUAL(static_cast<int>(RadarMode::ClassicSweep),
                     static_cast<int>(screen.mode()));
   TEST_ASSERT_FALSE(screen.hasSelection());
@@ -143,8 +162,8 @@ void test_radar_mode_toggle(void) {
 
 void test_radar_select_detail_card(void) {
   ScreenRadar screen;
-  screen.toggleMode();  // Detail for immediate blips
   screen.bind(loadAdsbFixture());
+  paintFullRevolution(screen);
   TEST_ASSERT_FALSE(screen.selectBlip(999));
   TEST_ASSERT_FALSE(screen.hasSelection());
 
@@ -244,8 +263,8 @@ void test_radar_classic_paints_on_sweep_not_bind(void) {
 void test_radar_bind_preserves_selection_by_callsign(void) {
   ScreenRadar screen;
   AircraftList list = loadAdsbFixture();
-  screen.toggleMode();  // Detail
   screen.bind(list);
+  paintFullRevolution(screen);
   std::size_t idx = 0;
   bool found = false;
   for (std::size_t i = 0; i < screen.blipCount(); ++i) {
@@ -265,8 +284,8 @@ void test_radar_bind_preserves_selection_by_callsign(void) {
 void test_radar_bind_clears_selection_when_gone(void) {
   ScreenRadar screen;
   AircraftList list = loadAdsbFixture();
-  screen.toggleMode();
   screen.bind(list);
+  paintFullRevolution(screen);
   TEST_ASSERT_TRUE(screen.selectBlip(0));
   AircraftList other{};
   other.count = 1;
@@ -281,8 +300,8 @@ void test_radar_bind_clears_selection_when_gone(void) {
 void test_radar_zoom_preserves_selection_by_callsign(void) {
   ScreenRadar screen;
   const AircraftList list = loadAdsbFixture();
-  screen.toggleMode();  // Detail — index/callsign list stable on zoom rebuild
   screen.bind(list);
+  paintFullRevolution(screen);
 
   constexpr const char* kTarget = "N5953Q";
   std::size_t idx = 0;
@@ -298,7 +317,7 @@ void test_radar_zoom_preserves_selection_by_callsign(void) {
   TEST_ASSERT_TRUE(screen.selectBlip(idx));
   TEST_ASSERT_EQUAL_STRING(kTarget, screen.detailCard().callsign);
 
-  // Zoom out: more blips may appear before the selected aircraft.
+  // Zoom out: painted set may grow after later sweeps; selection stays.
   screen.onRotate(5);
   TEST_ASSERT_TRUE(screen.hasSelection());
   TEST_ASSERT_EQUAL_STRING(kTarget, screen.detailCard().callsign);

@@ -19,6 +19,12 @@ constexpr float kRadarDefaultRangeMi = 25.0f;
 /** Encoder zoom step (miles). */
 constexpr float kRadarRangeStepMi = 5.0f;
 
+/**
+ * At or below this range, traffic uses velocity vectors; above it, dense dots
+ * (readable when the map is crowded at long range).
+ */
+constexpr float kRadarVectorMaxRangeMi = 15.0f;
+
 /** Classic sweep period — matches DeskRad / firmware (10 s per revolution). */
 constexpr uint32_t kRadarSweepPeriodMs = 10000;
 
@@ -92,15 +98,14 @@ class ScreenRadar {
 
   /**
    * Ingest latest ADS-B list.
-   * Detail: rebuild displayed blips immediately.
-   * ClassicSweep: keep displayed positions; paint updates when the sweep
+   * Keeps displayed paint-on-scan positions; paint updates when the sweep
    * crosses each aircraft (avoids a full-screen jump every poll).
    */
   void bind(const AircraftList& list);
 
   /**
-   * Advance classic sweep; paint any blips whose bearing enters the gate.
-   * Ages Classic phosphor fade timers.
+   * Advance sweep; paint any blips whose bearing enters the gate.
+   * Ages phosphor fade timers. Always runs (selection does not pause sweep).
    */
   void onTick(uint32_t elapsedMs);
 
@@ -111,7 +116,14 @@ class ScreenRadar {
 
   RadarMode mode() const { return mode_; }
 
-  /** Tap empty area: ClassicSweep ↔ Detail. Clears blip selection. */
+  /**
+   * Switch modes without clearing selection.
+   * Both modes keep paint-on-scan + sweep; mode is retained for API/tests.
+   * Traffic symbology follows zoom (`kRadarVectorMaxRangeMi`), not mode.
+   */
+  void setMode(RadarMode mode);
+
+  /** Tap empty area legacy toggle. Clears blip selection. */
   void toggleMode();
 
   float rangeMiles() const { return rangeMiles_; }
@@ -162,7 +174,7 @@ class ScreenRadar {
   RadarView view() const;
 
  private:
-  /** Immediate full refresh of displayed blips from source_ (Detail / zoom). */
+  /** Immediate full refresh of displayed blips from source_ (tests / zoom). */
   void rebuildBlips();
   void applyRange(float rangeMiles);
   void setActiveCenter(double lat, double lon, bool temp);

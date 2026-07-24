@@ -26,7 +26,7 @@ Boots in **Focused Clock**. Enter/Space exits to carousel; then Left/Right cycle
 |-----|---------|
 | Left / Right (also `[` `]` `A` `D`) | Encoder rotate |
 | Enter / Space | Center tap (“knob click”) |
-| T | Tap |
+| Mouse click / T | Tap |
 | Y | Double-tap |
 | U | Long-press |
 | Esc / Q | Quit |
@@ -39,4 +39,4 @@ Boots offline: loads JSON from `fixtures/` (captured from the live backend + ads
 
 Once booted, Radar is the exception — while it's the active screen (carousel-highlighted or focused), the sim polls the live [adsb.lol](https://api.adsb.lol/) API every 10s via libcurl (`src/sim/sim_http.*`), centered on the radar's current lat/lon and range. Leaving Radar (switching to another screen) stops polling; the last-fetched aircraft remain bound until you return. A failed/slow request (timeout ~8s) just keeps the previous data — no fixture fallback mid-session, since the fixture already primed `radar_` at boot.
 
-Classic Sweep matches DeskRad’s feel: **10 s/rev**, a green phosphor trail behind the beam, and blips that only move when the sweep crosses them (polls refresh the underlying list without jumping the whole disc). Detail mode still shows the full list immediately.
+Classic Sweep runs continuously (including while a target is selected): **10 s/rev**, a green phosphor trail, and blips that only move when the sweep crosses them. **Click a blip** for callsign / alt / speed (tag + card); empty click clears selection. **Zoom out** (≥20 mi) uses dense dots; **zoom in** (≤15 mi) uses velocity vectors.
