@@ -39,8 +39,10 @@ Mouse acts as capacitive touch for LVGL pointer input.
 
 ## Data
 
-Boots offline: loads JSON from `fixtures/` (captured from the live backend + adsb.lol) so every screen has data before any network call happens.
+Boots offline: loads JSON from `fixtures/` (captured from the live backend + adsb.lol) so every screen has data before any network call happens. Radar also loads `fixtures/map_context_dayton.json` for airport marks and Class D sample rings.
 
 Once booted, Radar is the exception — while it's the active screen (carousel-highlighted or focused), the sim polls the live [adsb.lol](https://api.adsb.lol/) API every ~10s via libcurl (`src/sim/sim_http.*`), centered on the radar's current lat/lon and range. Fetches start ~2.5s early on a **background thread** so the Classic sweep never stalls when the beam wraps through north. Leaving Radar (switching to another screen) stops polling; the last-fetched aircraft remain bound until you return. A failed/slow request (timeout ~8s) just keeps the previous data — no fixture fallback mid-session, since the fixture already primed `radar_` at boot.
 
-Classic Sweep runs continuously (including while a target is selected): **10 s/rev**, a green phosphor trail, and blips that only move when the sweep crosses them. **Click a visible blip** (Focused mode) for callsign / alt / speed (tag + card); empty click clears selection. **Zoom out** (≥20 mi) uses dense dots; **zoom in** (≤15 mi) uses velocity vectors.
+Map overlays: a debounced `MapContextPoller` GETs `{API_BASE_URL}/api/map/context` after center/range settles (~400 ms). On failure it keeps last-good overlays (fixture at boot). Optional `RADAR_POIS` in `config.h` add curated POI marks.
+
+Classic Sweep runs continuously (including while a target is selected): **10 s/rev**, a green phosphor trail, and blips that only move when the sweep crosses them. **Click a visible blip** (Focused mode) for callsign / alt / speed (tag + card); empty click clears selection. Static airport/POI taps show a short label (aircraft hit wins overlaps). **Zoom out** (≥20 mi) uses dense dots; **zoom in** (≤15 mi) uses velocity vectors.

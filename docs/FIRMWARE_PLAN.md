@@ -163,15 +163,13 @@ Two nested knob modes, consistent across every screen:
 
 ## Future Features (firmware-relevant, not in v1)
 
-- **Nearby airport markers on radar** — fixed-point markers (not aircraft) using data
-  from the backend's OurAirports lookup. TRACON-style visual language: white for
-  static elements (range rings, star-burst airport markers), green for aircraft data
-  text, a distinct color for the aircraft position symbol. Unlabeled by default,
-  tap-to-reveal code/name, filtered by airport size/type to avoid clutter. Reference
-  image on file from planning conversation.
+- **Radar map overlays (in progress on `feat/radar-map-overlays`)** — see
+  [docs/superpowers/specs/2026-07-24-radar-map-overlays-design.md](superpowers/specs/2026-07-24-radar-map-overlays-design.md):
+  towered airports (OurAirports TWR join), config POIs, Class B/C/D rings (D dashed),
+  debounced `GET /api/map/context`. Hydrography underlay deferred (static tiles only).
 - **Precipitation radar map** — device would render a small raw-pixel image (RGB565
-  or indexed palette) provided by the backend; scheduled after ADS-B phase since it
-  reuses image-handling groundwork.
+  or indexed palette) provided by the backend; reuses image-handling groundwork when
+  hydro/precip tiles ship.
 - **Vibration alerts** — buzz the onboard motor when a notable aircraft appears
   (altitude threshold or military squawk match).
 - **5-day weather view** — tap the hourly strip to expand into a daily forecast.
@@ -200,6 +198,8 @@ confirm against that repo's `API_CONTRACT.md` before finalizing parsing code):
 - **Sports:** MLB (live score/inning or next game time), Flagstand/SSR Hub (latest
   result + next scheduled race)
 - **Airport lookup:** given an ICAO code, returns lat/long
+- **Map context:** `GET /api/map/context?lat=&lon=&radiusMi=` — nearby towered
+  airports + Class B/C/D rings (see radar map-overlays design spec)
 
 adsb.lol is the one exception — the device calls it directly using its own public API
 shape, not via the backend.

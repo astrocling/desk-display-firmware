@@ -94,11 +94,11 @@ repo can be kept in sync.
   do the image processing: fetch tile, crop to area of interest, downsample to
   ~200×200px, convert to a raw pixel format the device can draw directly (RGB565 or
   small indexed palette), store as a small binary blob (Redis or Vercel Blob).
-  Scheduled after the firmware's ADS-B phase.
-- **Nearby airport data with size/type filtering** — extend the airport lookup to
-  support "airports near this lat/long" queries (not just code lookup), filtered by
-  OurAirports' size/type classification, for the firmware's future nearby-markers
-  feature.
+  Must stay precomputed/static-tile style — no live GIS/rasterize in the request path.
+- **Map context national airspace refresh** — expand committed `data/map/airspace-rings.json`
+  beyond the Dayton-area sample using FAA NASR-derived Class B/C/D geometry
+  (`npm run build:map-context` + larger fixture). Towered airports already come from
+  OurAirports TWR join.
 - **Multi-location weather** — additional cron fetches per location if ever wanted
   beyond the single home location.
 - **Editable timezone/contact list** — a small web or phone config interface to
@@ -148,5 +148,20 @@ update the firmware repo's copy of this section to match):
 ```json
 { "lat": 0.0, "lon": 0.0 }
 ```
+
+**`GET /api/map/context?lat=&lon=&radiusMi=`**
+```json
+{
+  "airports": [
+    { "icao": "KDAY", "name": "James M Cox Dayton Intl", "lat": 39.9024, "lon": -84.2194 }
+  ],
+  "rings": [
+    { "class": "D", "id": "KDAY_D", "points": [[39.92, -84.25], [39.93, -84.20]] }
+  ]
+}
+```
+
+Cost rules: served from committed `data/map/*.json` and/or Redis after
+`/api/cron/seed-map-context`; long `Cache-Control`; no per-request GIS.
 
 adsb.lol is called directly by the device and is out of scope for this backend.
