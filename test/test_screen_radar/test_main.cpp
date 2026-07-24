@@ -421,6 +421,19 @@ void test_adsb_url_from_radar_home(void) {
   TEST_ASSERT_NOT_NULL(std::strstr(url, "/dist/"));
 }
 
+void test_radar_set_pois_adds_home_mark(void) {
+  ScreenRadar screen;
+  const RadarPoi pois[] = {{"Home", kRadarHomeLat, kRadarHomeLon}};
+  screen.setPois(pois, 1);
+  const RadarView v = screen.view();
+  TEST_ASSERT_EQUAL(1, v.staticMarkCount);
+  TEST_ASSERT_EQUAL(static_cast<int>(RadarStaticMark::Kind::Poi),
+                    static_cast<int>(v.staticMarks[0].kind));
+  TEST_ASSERT_EQUAL_STRING("Home", v.staticMarks[0].label);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, v.staticMarks[0].offsetXMi);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, v.staticMarks[0].offsetYMi);
+}
+
 void test_radar_bind_map_context_projects_airport(void) {
   ScreenRadar r;
   MapContext ctx{};
@@ -586,6 +599,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_temp_vs_pin_center);
   RUN_TEST(test_adsb_url_from_radar_home);
   RUN_TEST(test_idle_settle_clears_selection_keeps_range);
+  RUN_TEST(test_radar_set_pois_adds_home_mark);
   RUN_TEST(test_radar_bind_map_context_projects_airport);
   RUN_TEST(test_radar_static_selection_survives_reproject);
   RUN_TEST(test_radar_static_select_clears_blip_select);

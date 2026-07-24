@@ -1,5 +1,7 @@
 #pragma once
 
+#include "desk_display/radar_poi.hpp"
+
 // Copy to config.h and fill in local values:
 //   cp include/config.h.example include/config.h
 // config.h is git-ignored — do not commit secrets.
@@ -15,6 +17,13 @@
 
 // Default ADS-B radar zoom range on boot (miles)
 #define RADAR_DEFAULT_RANGE_MI 25
+
+// Curated radar POIs (≤10). ScreenRadar::setPois(RADAR_POIS, RADAR_POI_COUNT).
+static const desk_display::RadarPoi RADAR_POIS[] = {
+    {"Home", HOME_LAT, HOME_LON},
+};
+static const int RADAR_POI_COUNT =
+    (int)(sizeof(RADAR_POIS) / sizeof(RADAR_POIS[0]));
 
 // Fixed timezone board rows (IANA names), home/Eastern first
 static const char *const TIMEZONE_IANA[] = {

@@ -16,6 +16,10 @@
 
 #include "../ui/radar_lvgl.hpp"
 
+#if __has_include("config.h")
+#include "config.h"
+#endif
+
 #include <cstdio>
 #include <ctime>
 #include <cstring>
@@ -135,6 +139,10 @@ void SimApp::load_fixtures() {
   if (loadFixture("adsb_sample.json", buf, sizeof(buf)) && desk_display::parseAdsb(buf, ac)) {
     radar_.bind(ac);
   }
+
+#if defined(RADAR_POI_COUNT)
+  radar_.setPois(RADAR_POIS, static_cast<std::size_t>(RADAR_POI_COUNT));
+#endif
 
   // Carousel is the browse path to Timezones — no "→ Timezones" chrome on Clock.
   clock_.setTimezoneBoardHint(false);
