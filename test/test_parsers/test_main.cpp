@@ -4,6 +4,7 @@
 
 #include "desk_display/adsb.hpp"
 #include "desk_display/airport.hpp"
+#include "desk_display/map_context.hpp"
 #include "desk_display/not_ready.hpp"
 #include "desk_display/scores.hpp"
 #include "desk_display/timezones.hpp"
@@ -147,6 +148,26 @@ void test_parse_airport_fixture(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.01f, -84.219f, static_cast<float>(a.lon));
 }
 
+void test_parse_map_context_dayton(void) {
+  TEST_ASSERT_TRUE(loadFixture("map_context_dayton.json", g_buf, sizeof(g_buf)));
+
+  MapContext ctx{};
+  TEST_ASSERT_TRUE(parseMapContext(g_buf, ctx));
+  TEST_ASSERT_EQUAL(2, ctx.airportCount);
+  TEST_ASSERT_EQUAL_STRING("KDAY", ctx.airports[0].icao);
+  TEST_ASSERT_EQUAL(1, ctx.ringCount);
+  TEST_ASSERT_TRUE(ctx.rings[0].cls == AirspaceClass::D);
+  TEST_ASSERT_TRUE(ctx.rings[0].pointCount >= 4);
+}
+
+void test_parse_map_context_rejects_bad_class(void) {
+  MapContext ctx{};
+  TEST_ASSERT_TRUE(parseMapContext(
+      "{\"airports\":[],\"rings\":[{\"class\":\"E\",\"id\":\"x\",\"points\":[[1,2],[3,4],[5,6]]}]}",
+      ctx));
+  TEST_ASSERT_EQUAL(0, ctx.ringCount);
+}
+
 void test_parse_adsb_fixture(void) {
   TEST_ASSERT_TRUE(loadFixture("adsb_sample.json", g_buf, sizeof(g_buf)));
 
@@ -187,6 +208,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_parse_scores_abbrs_optional);
   RUN_TEST(test_parse_scores_flagstand_next_with_status);
   RUN_TEST(test_parse_airport_fixture);
+  RUN_TEST(test_parse_map_context_dayton);
+  RUN_TEST(test_parse_map_context_rejects_bad_class);
   RUN_TEST(test_parse_adsb_fixture);
   RUN_TEST(test_not_ready_helper);
   return UNITY_END();

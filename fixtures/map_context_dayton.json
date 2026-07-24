@@ -1,0 +1,28 @@
+{
+  "airports": [
+    {
+      "icao": "KDAY",
+      "name": "James M Cox Dayton Intl",
+      "lat": 39.902401,
+      "lon": -84.219398
+    },
+    {
+      "icao": "KFFO",
+      "name": "Wright-Patterson AFB",
+      "lat": 39.826111,
+      "lon": -84.048332
+    }
+  ],
+  "rings": [
+    {
+      "class": "D",
+      "id": "KDAY_D",
+      "points": [
+        [39.92, -84.25],
+        [39.93, -84.20],
+        [39.88, -84.18],
+        [39.87, -84.24]
+      ]
+    }
+  ]
+}
