@@ -1,11 +1,14 @@
 #include <unity.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
 #include "desk_display/adsb.hpp"
 #include "desk_display/adsb_poll.hpp"
+#include "desk_display/aircraft_notable.hpp"
 #include "desk_display/airport.hpp"
+#include "desk_display/map_context.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/screen_radar.hpp"
 #include "fixture_loader.hpp"
@@ -232,6 +235,48 @@ void test_parse_adsb_type_reg_squawk(void) {
   TEST_ASSERT_EQUAL_STRING("7700", list2.items[0].squawk);
 }
 
+void test_radar_notable_military_and_watchlist(void) {
+  ScreenRadar screen;
+  screen.bind(loadAdsbFixture());
+  paintFullRevolution(screen);
+
+  bool foundMil = false;
+  for (std::size_t i = 0; i < screen.blipCount(); ++i) {
+    const RadarBlip& b = screen.blip(i);
+    if (std::strcmp(b.aircraft.callsign, "COBRA01") == 0) {
+      TEST_ASSERT_EQUAL(1, b.aircraft.dbFlags);
+      TEST_ASSERT_EQUAL(static_cast<int>(AircraftNotable::Military),
+                        static_cast<int>(b.notable));
+      TEST_ASSERT_TRUE(screen.selectBlip(i));
+      const RadarDetailCard card = screen.detailCard();
+      TEST_ASSERT_EQUAL(static_cast<int>(AircraftNotable::Military),
+                        static_cast<int>(card.notable));
+      TEST_ASSERT_NOT_NULL(std::strstr(card.tagLine3, "MIL"));
+      foundMil = true;
+      break;
+    }
+  }
+  TEST_ASSERT_TRUE_MESSAGE(foundMil, "COBRA01 should be painted in range");
+
+  AircraftList helo{};
+  helo.count = 1;
+  std::snprintf(helo.items[0].callsign, sizeof(helo.items[0].callsign), "CF9");
+  std::snprintf(helo.items[0].registration, sizeof(helo.items[0].registration),
+                "N130NB");
+  helo.items[0].hasPosition = true;
+  helo.items[0].lat = kRadarHomeLat + 0.02;
+  helo.items[0].lon = kRadarHomeLon;
+  helo.items[0].hasTrack = true;
+  helo.items[0].trackDeg = 90.0f;
+
+  ScreenRadar screen2;
+  screen2.bind(helo);
+  paintFullRevolution(screen2);
+  TEST_ASSERT_TRUE(screen2.blipCount() >= 1);
+  TEST_ASSERT_EQUAL(static_cast<int>(AircraftNotable::Interesting),
+                    static_cast<int>(screen2.blip(0).notable));
+}
+
 void test_parse_adsb_calc_track_and_geom_rate_fallback(void) {
   const char* json =
       "{\"ac\":[{\"hex\":\"def\",\"lat\":40.0,\"lon\":-84.0,"
@@ -376,6 +421,48 @@ void test_adsb_url_from_radar_home(void) {
   TEST_ASSERT_NOT_NULL(std::strstr(url, "/dist/"));
 }
 
+void test_radar_bind_map_context_projects_airport(void) {
+  ScreenRadar r;
+  MapContext ctx{};
+  ctx.airportCount = 1;
+  std::snprintf(ctx.airports[0].icao, sizeof(ctx.airports[0].icao), "KTEST");
+  ctx.airports[0].lat = kRadarHomeLat;
+  ctx.airports[0].lon =
+      kRadarHomeLon + 10.0 / (69.0 * std::cos(kRadarHomeLat * 0.017453292519943295));
+  r.bindMapContext(ctx);
+  const RadarView v = r.view();
+  TEST_ASSERT_EQUAL(1, v.staticMarkCount);
+  TEST_ASSERT_FLOAT_WITHIN(1.5f, 10.0f, v.staticMarks[0].offsetXMi);
+  TEST_ASSERT_FLOAT_WITHIN(1.5f, 0.0f, v.staticMarks[0].offsetYMi);
+  TEST_ASSERT_EQUAL(static_cast<int>(RadarStaticMark::Kind::Airport),
+                    static_cast<int>(v.staticMarks[0].kind));
+  TEST_ASSERT_EQUAL_STRING("KTEST", v.staticMarks[0].label);
+}
+
+void test_radar_static_select_clears_blip_select(void) {
+  ScreenRadar r;
+  r.bind(loadAdsbFixture());
+  paintFullRevolution(r);
+
+  MapContext ctx{};
+  ctx.airportCount = 1;
+  std::snprintf(ctx.airports[0].icao, sizeof(ctx.airports[0].icao), "KTEST");
+  ctx.airports[0].lat = kRadarHomeLat + 0.02;
+  ctx.airports[0].lon = kRadarHomeLon;
+  r.bindMapContext(ctx);
+
+  TEST_ASSERT_TRUE(r.selectBlip(0));
+  TEST_ASSERT_TRUE(r.hasSelection());
+  TEST_ASSERT_TRUE(r.selectStaticMark(0));
+  TEST_ASSERT_FALSE(r.hasSelection());
+  TEST_ASSERT_TRUE(r.view().hasStaticSelection);
+  TEST_ASSERT_EQUAL(0, r.view().selectedStaticIndex);
+
+  TEST_ASSERT_TRUE(r.selectBlip(0));
+  TEST_ASSERT_FALSE(r.view().hasStaticSelection);
+  TEST_ASSERT_TRUE(r.hasSelection());
+}
+
 void test_idle_settle_clears_selection_keeps_range(void) {
   ScreenRadar screen;
   screen.bind(loadAdsbFixture());
@@ -466,6 +553,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_select_detail_card);
   RUN_TEST(test_parse_adsb_track_and_rate);
   RUN_TEST(test_parse_adsb_type_reg_squawk);
+  RUN_TEST(test_radar_notable_military_and_watchlist);
   RUN_TEST(test_parse_adsb_calc_track_and_geom_rate_fallback);
   RUN_TEST(test_parse_adsb_missing_track_rate);
   RUN_TEST(test_radar_sweep_advances_and_wraps);
@@ -476,5 +564,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_temp_vs_pin_center);
   RUN_TEST(test_adsb_url_from_radar_home);
   RUN_TEST(test_idle_settle_clears_selection_keeps_range);
+  RUN_TEST(test_radar_bind_map_context_projects_airport);
+  RUN_TEST(test_radar_static_select_clears_blip_select);
   return UNITY_END();
 }

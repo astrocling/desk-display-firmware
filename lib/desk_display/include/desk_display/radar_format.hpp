@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "desk_display/adsb.hpp"
+#include "desk_display/aircraft_notable.hpp"
 
 namespace desk_display {
 
@@ -26,8 +27,9 @@ bool formatRadarSpeedDense(char* buf, std::size_t bufLen, float speedKt);
 bool formatRadarTagLine2(char* buf, std::size_t bufLen, const Aircraft& ac,
                          RadarTagStyle style = RadarTagStyle::Full);
 
-/** Line 3 (selected): type + squawk. Omits missing; false if both empty. */
+/** Line 3 (selected): type + squawk + optional notable reason. Omits missing. */
 bool formatRadarTagLine3(char* buf, std::size_t bufLen, const char* type,
-                         const char* squawk);
+                         const char* squawk,
+                         AircraftNotable notable = AircraftNotable::None);
 
 }  // namespace desk_display

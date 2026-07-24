@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace desk_display {
 
@@ -12,6 +13,8 @@ struct Aircraft {
   char type[8];          // ICAO type designator from `t` (e.g. B738)
   char registration[kMaxCallsign];  // from `r`
   char squawk[8];        // Mode A code from `squawk`
+  char emergency[12];    // from `emergency` (e.g. "none", "general")
+  uint8_t dbFlags;       // bit0 military, bit1 interesting, bit2 PIA, bit3 LADD
   float altFt;     // barometric altitude when available; NaN if missing
   float speedKt;   // ground speed when available; NaN if missing
   float trackDeg;  // track heading when available; NaN if missing

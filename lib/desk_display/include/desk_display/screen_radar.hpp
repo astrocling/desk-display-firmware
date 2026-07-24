@@ -1,8 +1,11 @@
 #pragma once
 
 #include "desk_display/adsb.hpp"
+#include "desk_display/aircraft_notable.hpp"
 #include "desk_display/airport.hpp"
+#include "desk_display/map_context.hpp"
 #include "desk_display/radar.hpp"
+#include "desk_display/radar_poi.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -53,6 +56,23 @@ struct RadarBlip {
   float offsetYMi;  // +north
   /** Ms since last sweep paint; used for Classic phosphor fade. */
   uint32_t litAgeMs;
+  AircraftNotable notable;
+};
+
+/** Projected towered-airport or config POI mark. */
+struct RadarStaticMark {
+  enum Kind : uint8_t { Airport, Poi } kind;
+  char label[48];
+  float offsetXMi;
+  float offsetYMi;
+};
+
+/** Projected Class B/C/D airspace ring vertices. */
+struct RadarAirspaceRingView {
+  AirspaceClass cls;
+  float offsetXMi[64];
+  float offsetYMi[64];
+  uint8_t pointCount;
 };
 
 /** Selected aircraft detail card fields. */
@@ -64,12 +84,13 @@ struct RadarDetailCard {
   bool hasAlt;
   bool hasSpeed;
   char tagLine2[24];
-  char tagLine3[24];
+  char tagLine3[28];
   char altLabel[8];
   char speedLabel[8];
   char type[8];
   char registration[kMaxCallsign];
   char squawk[8];
+  AircraftNotable notable;
 };
 
 /** Snapshot for LVGL (or tests) to render the radar screen. */
@@ -85,6 +106,13 @@ struct RadarView {
 
   const RadarBlip* blips;
   std::size_t blipCount;
+
+  const RadarStaticMark* staticMarks;
+  std::size_t staticMarkCount;
+  const RadarAirspaceRingView* airspaceRings;
+  std::size_t airspaceRingCount;
+  bool hasStaticSelection;
+  std::size_t selectedStaticIndex;
 
   bool hasSelection;
   std::size_t selectedIndex;
@@ -111,6 +139,12 @@ class ScreenRadar {
   void bind(const AircraftList& list);
 
   /**
+   * Optional personal interesting-registration watchlist (tail numbers).
+   * Defaults to kRadarInterestingRegsDefault. Pass nullptr to restore default.
+   */
+  void setInterestingRegs(const char* const* regs, std::size_t count);
+
+  /**
    * Advance sweep; paint any blips whose bearing enters the gate.
    * Ages phosphor fade timers. Always runs (selection does not pause sweep).
    */
@@ -118,6 +152,19 @@ class ScreenRadar {
 
   /** Clear bound data; not ready until bind again. */
   void unbind();
+
+  /**
+   * Bind towered airports + airspace rings from map-context JSON.
+   * Raw lat/lon retained; offsets reproject on center/range change.
+   */
+  void bindMapContext(const MapContext& ctx);
+
+  /** Curated POIs from device config (max 10). */
+  void setPois(const RadarPoi* pois, std::size_t count);
+
+  /** Tap a static mark by index. Clears blip selection. */
+  bool selectStaticMark(std::size_t index);
+  void clearStaticSelection();
 
   bool ready() const { return ready_; }
 
@@ -188,6 +235,7 @@ class ScreenRadar {
   void rebuildBlips();
   void applyRange(float rangeMiles);
   void setActiveCenter(double lat, double lon, bool temp);
+  void reprojectOverlays();
 
   /** Save selected callsign before rebuild; returns false if none. */
   bool captureSelectionCallsign(char* dst, std::size_t dstLen) const;
@@ -200,6 +248,7 @@ class ScreenRadar {
   void paintSweepAtAngle(float sweepDeg);
   void pruneDisplayedOutsideRange();
   void reprojectDisplayedOffsets();
+  AircraftNotable classify(const Aircraft& ac) const;
 
   bool ready_;
   RadarMode mode_;
@@ -214,6 +263,9 @@ class ScreenRadar {
   bool isTempCenter_;
   bool isPinned_;
 
+  const char* const* interestingRegs_;
+  std::size_t interestingRegCount_;
+
   AircraftList source_;
   struct BlipList {
     RadarBlip items[kMaxAircraft];
@@ -223,6 +275,30 @@ class ScreenRadar {
 
   bool hasSelection_;
   std::size_t selectedIndex_;
+
+  MapContext mapContext_;
+  bool hasMapContext_;
+  struct StoredPoi {
+    const char* name;
+    double lat;
+    double lon;
+  };
+  StoredPoi pois_[10];
+  std::size_t poiCount_;
+
+  static constexpr std::size_t kMaxProjectedAirports = 20;
+  static constexpr std::size_t kMaxProjectedPois = 10;
+  static constexpr std::size_t kMaxStaticMarks =
+      kMaxProjectedAirports + kMaxProjectedPois;
+  static constexpr std::size_t kMaxAirspaceRingsView = 8;
+
+  RadarStaticMark staticMarks_[kMaxStaticMarks];
+  std::size_t staticMarkCount_;
+  RadarAirspaceRingView airspaceRings_[kMaxAirspaceRingsView];
+  std::size_t airspaceRingCount_;
+  bool hasStaticSelection_;
+  std::size_t selectedStaticIndex_;
+
   float sweepAngleDeg_;
 };
 

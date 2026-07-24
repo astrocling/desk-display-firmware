@@ -1,5 +1,6 @@
 #include "desk_display/screen_radar.hpp"
 
+#include "desk_display/aircraft_notable.hpp"
 #include "desk_display/radar_format.hpp"
 
 #include <cmath>
@@ -33,6 +34,81 @@ bool callsignInSource(const AircraftList& source, const char* callsign) {
   return false;
 }
 
+void sortAirportCandidatesByDistance(std::size_t* indices, float* distances,
+                                     std::size_t count) {
+  for (std::size_t i = 1; i < count; ++i) {
+    const std::size_t idx = indices[i];
+    const float dist = distances[i];
+    std::size_t j = i;
+    while (j > 0 && distances[j - 1] > dist) {
+      indices[j] = indices[j - 1];
+      distances[j] = distances[j - 1];
+      --j;
+    }
+    indices[j] = idx;
+    distances[j] = dist;
+  }
+}
+
+struct RingCandidate {
+  std::size_t sourceIndex;
+  float centroidDistMi;
+  AirspaceClass cls;
+};
+
+bool ringIntersectsRange(const MapAirspaceRing& ring, double centerLat,
+                         double centerLon, float rangeMi) {
+  float cx = 0.0f;
+  float cy = 0.0f;
+  for (uint8_t i = 0; i < ring.pointCount; ++i) {
+    aircraftOffsetMiles(centerLat, centerLon, ring.pointsLat[i],
+                        ring.pointsLon[i], cx, cy);
+    const float dist = std::sqrt(cx * cx + cy * cy);
+    if (dist <= rangeMi + 0.01f) {
+      return true;
+    }
+  }
+
+  double sumLat = 0.0;
+  double sumLon = 0.0;
+  for (uint8_t i = 0; i < ring.pointCount; ++i) {
+    sumLat += ring.pointsLat[i];
+    sumLon += ring.pointsLon[i];
+  }
+  const double centroidLat = sumLat / static_cast<double>(ring.pointCount);
+  const double centroidLon = sumLon / static_cast<double>(ring.pointCount);
+  return distanceMiles(centerLat, centerLon, centroidLat, centroidLon) <=
+         rangeMi + 0.01f;
+}
+
+void trimRingCandidates(RingCandidate* cands, std::size_t& count,
+                        std::size_t maxCount) {
+  while (count > maxCount) {
+    std::size_t dropIdx = count;
+    for (std::size_t i = 0; i < count; ++i) {
+      if (cands[i].cls != AirspaceClass::D) {
+        continue;
+      }
+      if (dropIdx == count ||
+          cands[i].centroidDistMi > cands[dropIdx].centroidDistMi) {
+        dropIdx = i;
+      }
+    }
+    if (dropIdx == count) {
+      for (std::size_t i = 0; i < count; ++i) {
+        if (dropIdx == count ||
+            cands[i].centroidDistMi > cands[dropIdx].centroidDistMi) {
+          dropIdx = i;
+        }
+      }
+    }
+    for (std::size_t j = dropIdx + 1; j < count; ++j) {
+      cands[j - 1] = cands[j];
+    }
+    --count;
+  }
+}
+
 }  // namespace
 
 ScreenRadar::ScreenRadar() { reset(); }
@@ -51,11 +127,36 @@ void ScreenRadar::reset() {
   isTempCenter_ = false;
   isPinned_ = false;
 
+  interestingRegs_ = kRadarInterestingRegsDefault;
+  interestingRegCount_ = kRadarInterestingRegCount;
+
   std::memset(&source_, 0, sizeof(source_));
   std::memset(&blips_, 0, sizeof(blips_));
   hasSelection_ = false;
   selectedIndex_ = 0;
+
+  std::memset(&mapContext_, 0, sizeof(mapContext_));
+  hasMapContext_ = false;
+  poiCount_ = 0;
+  staticMarkCount_ = 0;
+  airspaceRingCount_ = 0;
+  hasStaticSelection_ = false;
+  selectedStaticIndex_ = 0;
   sweepAngleDeg_ = 0.0f;
+}
+
+void ScreenRadar::setInterestingRegs(const char* const* regs, std::size_t count) {
+  if (!regs) {
+    interestingRegs_ = kRadarInterestingRegsDefault;
+    interestingRegCount_ = kRadarInterestingRegCount;
+    return;
+  }
+  interestingRegs_ = regs;
+  interestingRegCount_ = count;
+}
+
+AircraftNotable ScreenRadar::classify(const Aircraft& ac) const {
+  return classifyAircraftNotable(ac, interestingRegs_, interestingRegCount_);
 }
 
 bool ScreenRadar::captureSelectionCallsign(char* dst,
@@ -115,6 +216,7 @@ void ScreenRadar::paintBlipFromAircraft(const Aircraft& ac) {
       blips_.items[i].offsetXMi = x;
       blips_.items[i].offsetYMi = y;
       blips_.items[i].litAgeMs = 0;
+      blips_.items[i].notable = classify(ac);
       return;
     }
   }
@@ -127,6 +229,7 @@ void ScreenRadar::paintBlipFromAircraft(const Aircraft& ac) {
   b.offsetXMi = x;
   b.offsetYMi = y;
   b.litAgeMs = 0;
+  b.notable = classify(ac);
 }
 
 void ScreenRadar::paintSweepAtAngle(float sweepDeg) {
@@ -285,6 +388,7 @@ bool ScreenRadar::selectBlip(std::size_t index) {
   if (!ready_ || index >= blips_.count) {
     return false;
   }
+  clearStaticSelection();
   hasSelection_ = true;
   selectedIndex_ = index;
   return true;
@@ -293,6 +397,43 @@ bool ScreenRadar::selectBlip(std::size_t index) {
 void ScreenRadar::clearSelection() {
   hasSelection_ = false;
   selectedIndex_ = 0;
+}
+
+void ScreenRadar::bindMapContext(const MapContext& ctx) {
+  mapContext_ = ctx;
+  hasMapContext_ = true;
+  reprojectOverlays();
+}
+
+void ScreenRadar::setPois(const RadarPoi* pois, std::size_t count) {
+  poiCount_ = 0;
+  if (!pois || count == 0) {
+    reprojectOverlays();
+    return;
+  }
+  const std::size_t n = count > kMaxProjectedPois ? kMaxProjectedPois : count;
+  for (std::size_t i = 0; i < n; ++i) {
+    pois_[i].name = pois[i].name;
+    pois_[i].lat = pois[i].lat;
+    pois_[i].lon = pois[i].lon;
+  }
+  poiCount_ = n;
+  reprojectOverlays();
+}
+
+bool ScreenRadar::selectStaticMark(std::size_t index) {
+  if (index >= staticMarkCount_) {
+    return false;
+  }
+  clearSelection();
+  hasStaticSelection_ = true;
+  selectedStaticIndex_ = index;
+  return true;
+}
+
+void ScreenRadar::clearStaticSelection() {
+  hasStaticSelection_ = false;
+  selectedStaticIndex_ = 0;
 }
 
 void ScreenRadar::onIdleSettle() { clearSelection(); }
@@ -312,13 +453,16 @@ RadarDetailCard ScreenRadar::detailCard() const {
   card.type[0] = '\0';
   card.registration[0] = '\0';
   card.squawk[0] = '\0';
+  card.notable = AircraftNotable::None;
 
   if (!hasSelection_ || selectedIndex_ >= blips_.count) {
     return card;
   }
 
-  const Aircraft& ac = blips_.items[selectedIndex_].aircraft;
+  const RadarBlip& blip = blips_.items[selectedIndex_];
+  const Aircraft& ac = blip.aircraft;
   card.present = true;
+  card.notable = blip.notable;
   copyCallsign(card.callsign, sizeof(card.callsign), ac.callsign);
   copyCallsign(card.type, sizeof(card.type), ac.type);
   copyCallsign(card.registration, sizeof(card.registration), ac.registration);
@@ -336,7 +480,8 @@ RadarDetailCard ScreenRadar::detailCard() const {
   }
   formatRadarTagLine2(card.tagLine2, sizeof(card.tagLine2), ac,
                       RadarTagStyle::Full);
-  formatRadarTagLine3(card.tagLine3, sizeof(card.tagLine3), ac.type, ac.squawk);
+  formatRadarTagLine3(card.tagLine3, sizeof(card.tagLine3), ac.type, ac.squawk,
+                      blip.notable);
   return card;
 }
 
@@ -384,6 +529,12 @@ RadarView ScreenRadar::view() const {
   v.isHomeCenter = isHomeCenter();
   v.blips = blips_.items;
   v.blipCount = blips_.count;
+  v.staticMarks = staticMarks_;
+  v.staticMarkCount = staticMarkCount_;
+  v.airspaceRings = airspaceRings_;
+  v.airspaceRingCount = airspaceRingCount_;
+  v.hasStaticSelection = hasStaticSelection_;
+  v.selectedStaticIndex = selectedStaticIndex_;
   v.hasSelection = hasSelection_;
   v.selectedIndex = selectedIndex_;
   v.detail = detailCard();
@@ -406,6 +557,7 @@ void ScreenRadar::rebuildBlips() {
     aircraftOffsetMiles(centerLat_, centerLon_, b.aircraft.lat, b.aircraft.lon,
                         b.offsetXMi, b.offsetYMi);
     b.litAgeMs = 0;
+    b.notable = classify(b.aircraft);
     ++blips_.count;
   }
 
@@ -420,6 +572,7 @@ void ScreenRadar::applyRange(float rangeMiles) {
     return;
   }
   rangeMiles_ = clamped;
+  reprojectOverlays();
   if (!ready_) {
     return;
   }
@@ -431,11 +584,113 @@ void ScreenRadar::setActiveCenter(double lat, double lon, bool temp) {
   centerLon_ = lon;
   isTempCenter_ = temp;
   clearSelection();
+  clearStaticSelection();
+  reprojectOverlays();
   if (!ready_) {
     return;
   }
   // New center: clear painted blips; sweep will repaint from source_.
   std::memset(&blips_, 0, sizeof(blips_));
+}
+
+void ScreenRadar::reprojectOverlays() {
+  staticMarkCount_ = 0;
+  airspaceRingCount_ = 0;
+
+  if (hasStaticSelection_ &&
+      selectedStaticIndex_ >= staticMarkCount_) {
+    clearStaticSelection();
+  }
+
+  if (hasMapContext_) {
+    std::size_t airportIndices[40];
+    float airportDistances[40];
+    std::size_t airportCandidateCount = 0;
+    for (std::size_t i = 0; i < mapContext_.airportCount; ++i) {
+      const MapAirport& ap = mapContext_.airports[i];
+      const float dist =
+          distanceMiles(centerLat_, centerLon_, ap.lat, ap.lon);
+      if (dist > rangeMiles_ + 0.01f) {
+        continue;
+      }
+      airportIndices[airportCandidateCount] = i;
+      airportDistances[airportCandidateCount] = dist;
+      ++airportCandidateCount;
+    }
+    sortAirportCandidatesByDistance(airportIndices, airportDistances,
+                                    airportCandidateCount);
+    const std::size_t airportLimit =
+        airportCandidateCount > kMaxProjectedAirports ? kMaxProjectedAirports
+                                                      : airportCandidateCount;
+    for (std::size_t i = 0; i < airportLimit; ++i) {
+      const MapAirport& ap = mapContext_.airports[airportIndices[i]];
+      RadarStaticMark& mark = staticMarks_[staticMarkCount_++];
+      mark.kind = RadarStaticMark::Kind::Airport;
+      if (ap.icao[0] != '\0') {
+        copyCallsign(mark.label, sizeof(mark.label), ap.icao);
+      } else {
+        copyCallsign(mark.label, sizeof(mark.label), ap.name);
+      }
+      aircraftOffsetMiles(centerLat_, centerLon_, ap.lat, ap.lon,
+                          mark.offsetXMi, mark.offsetYMi);
+    }
+
+    RingCandidate ringCands[16];
+    std::size_t ringCandCount = 0;
+    for (std::size_t i = 0; i < mapContext_.ringCount; ++i) {
+      const MapAirspaceRing& ring = mapContext_.rings[i];
+      if (!ringIntersectsRange(ring, centerLat_, centerLon_, rangeMiles_)) {
+        continue;
+      }
+      double sumLat = 0.0;
+      double sumLon = 0.0;
+      for (uint8_t p = 0; p < ring.pointCount; ++p) {
+        sumLat += ring.pointsLat[p];
+        sumLon += ring.pointsLon[p];
+      }
+      const double centroidLat =
+          sumLat / static_cast<double>(ring.pointCount);
+      const double centroidLon =
+          sumLon / static_cast<double>(ring.pointCount);
+      ringCands[ringCandCount].sourceIndex = i;
+      ringCands[ringCandCount].centroidDistMi =
+          distanceMiles(centerLat_, centerLon_, centroidLat, centroidLon);
+      ringCands[ringCandCount].cls = ring.cls;
+      ++ringCandCount;
+    }
+    trimRingCandidates(ringCands, ringCandCount, kMaxAirspaceRingsView);
+    for (std::size_t i = 0; i < ringCandCount; ++i) {
+      const MapAirspaceRing& ring =
+          mapContext_.rings[ringCands[i].sourceIndex];
+      RadarAirspaceRingView& view = airspaceRings_[airspaceRingCount_++];
+      view.cls = ring.cls;
+      view.pointCount = ring.pointCount;
+      for (uint8_t p = 0; p < ring.pointCount; ++p) {
+        aircraftOffsetMiles(centerLat_, centerLon_, ring.pointsLat[p],
+                            ring.pointsLon[p], view.offsetXMi[p],
+                            view.offsetYMi[p]);
+      }
+    }
+  }
+
+  for (std::size_t i = 0; i < poiCount_ && staticMarkCount_ < kMaxStaticMarks;
+       ++i) {
+    const StoredPoi& poi = pois_[i];
+    const float dist =
+        distanceMiles(centerLat_, centerLon_, poi.lat, poi.lon);
+    if (dist > rangeMiles_ + 0.01f) {
+      continue;
+    }
+    RadarStaticMark& mark = staticMarks_[staticMarkCount_++];
+    mark.kind = RadarStaticMark::Kind::Poi;
+    copyCallsign(mark.label, sizeof(mark.label), poi.name);
+    aircraftOffsetMiles(centerLat_, centerLon_, poi.lat, poi.lon,
+                        mark.offsetXMi, mark.offsetYMi);
+  }
+
+  if (hasStaticSelection_ && selectedStaticIndex_ >= staticMarkCount_) {
+    clearStaticSelection();
+  }
 }
 
 }  // namespace desk_display

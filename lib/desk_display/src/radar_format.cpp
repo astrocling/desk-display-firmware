@@ -142,7 +142,7 @@ bool formatRadarTagLine2(char* buf, std::size_t bufLen, const Aircraft& ac,
 }
 
 bool formatRadarTagLine3(char* buf, std::size_t bufLen, const char* type,
-                         const char* squawk) {
+                         const char* squawk, AircraftNotable notable) {
   if (!buf || bufLen == 0) {
     return false;
   }
@@ -157,6 +157,12 @@ bool formatRadarTagLine3(char* buf, std::size_t bufLen, const char* type,
   }
   if (squawk && squawk[0] != '\0') {
     if (!appendSegment(buf, bufLen, len, squawk)) {
+      return false;
+    }
+    wroteAny = true;
+  }
+  if (const char* reason = aircraftNotableReason(notable)) {
+    if (!appendSegment(buf, bufLen, len, reason)) {
       return false;
     }
     wroteAny = true;

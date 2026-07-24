@@ -91,6 +91,20 @@ bool parseAdsb(const char* json, AircraftList& out) {
       }
     }
 
+    item.emergency[0] = '\0';
+    if (!ac["emergency"].isNull() && ac["emergency"].is<const char*>()) {
+      copyStr(item.emergency, sizeof(item.emergency),
+              ac["emergency"].as<const char*>());
+    }
+
+    item.dbFlags = 0;
+    if (!ac["dbFlags"].isNull() && !ac["dbFlags"].is<const char*>()) {
+      const unsigned flags = ac["dbFlags"].as<unsigned>();
+      if (flags <= 255u) {
+        item.dbFlags = static_cast<uint8_t>(flags);
+      }
+    }
+
     item.hasAlt = false;
     if (!ac["alt_baro"].isNull() && !ac["alt_baro"].is<const char*>()) {
       item.hasAlt = true;
