@@ -71,7 +71,7 @@ confirm the unit and touch/knob are working before writing anything custom.
 
 Two nested knob modes, consistent across every screen:
 
-- **Carousel mode** (top level, default when idle): rotate = cycle between screens;
+- **Carousel mode** (top-level browse): rotate = cycle between screens;
   knob click = enter the highlighted screen
 - **Focused mode** (inside a screen): rotate = context-specific action (defined per
   screen below); knob click = back out to carousel

@@ -54,7 +54,7 @@ class Nav {
   void on_double_tap();
   void on_long_press();
 
-  /** Advance idle timer by elapsed milliseconds; may trigger home fallback. */
+  /** Advance idle timer by elapsed milliseconds; may trigger home fallback or SettleFocused (stay on current screen). */
   IdleEvent on_tick(uint32_t elapsed_ms);
 
   /** Clear idle accumulator without changing mode/screen. */
