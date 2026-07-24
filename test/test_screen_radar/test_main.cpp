@@ -6,6 +6,7 @@
 
 #include "desk_display/adsb.hpp"
 #include "desk_display/adsb_poll.hpp"
+#include "desk_display/map_context_poll.hpp"
 #include "desk_display/aircraft_notable.hpp"
 #include "desk_display/airport.hpp"
 #include "desk_display/map_context.hpp"
@@ -412,6 +413,77 @@ void test_radar_zoom_preserves_selection_by_callsign(void) {
   TEST_ASSERT_FALSE(screen.hasSelection());
 }
 
+static int g_map_ctx_http_calls;
+static char g_last_map_ctx_url[256];
+
+static bool fake_map_ctx_http(const char* url, char* body, std::size_t cap,
+                              std::size_t& len, void*) {
+  std::snprintf(g_last_map_ctx_url, sizeof(g_last_map_ctx_url), "%s", url);
+  ++g_map_ctx_http_calls;
+  const char* json =
+      "{\"airports\":[{\"icao\":\"KT\",\"name\":\"Test\",\"lat\":40.0,\"lon\":-84.0}],"
+      "\"rings\":[]}";
+  len = std::strlen(json);
+  if (len + 1 > cap) {
+    return false;
+  }
+  std::memcpy(body, json, len + 1);
+  return true;
+}
+
+void test_map_context_poller_debounces_center(void) {
+  g_map_ctx_http_calls = 0;
+  g_last_map_ctx_url[0] = '\0';
+  MapContextPoller poll;
+  poll.setHttpGet(fake_map_ctx_http, nullptr);
+  poll.setActive(true);
+
+  poll.setCenter(40.03353, -84.19588, 25.0f);
+  poll.onTick(100);
+  poll.setCenter(40.05, -84.2, 25.0f);
+  poll.onTick(100);
+  poll.setCenter(40.05, -84.2, 30.0f);
+  poll.onTick(200);
+  TEST_ASSERT_EQUAL(0, g_map_ctx_http_calls);
+
+  poll.onTick(200);
+  TEST_ASSERT_EQUAL(1, g_map_ctx_http_calls);
+  TEST_ASSERT_NOT_NULL(std::strstr(g_last_map_ctx_url, "/api/map/context"));
+  TEST_ASSERT_NOT_NULL(std::strstr(g_last_map_ctx_url, "radiusMi=30"));
+
+  MapContext ctx{};
+  TEST_ASSERT_TRUE(poll.takeContext(ctx));
+  TEST_ASSERT_EQUAL(1, ctx.airportCount);
+  TEST_ASSERT_FALSE(poll.takeContext(ctx));
+
+  poll.setCenter(40.05, -84.2, 30.0f);
+  poll.onTick(500);
+  TEST_ASSERT_EQUAL(1, g_map_ctx_http_calls);
+}
+
+void test_map_context_poller_only_when_active(void) {
+  g_map_ctx_http_calls = 0;
+  MapContextPoller poll;
+  poll.setHttpGet(fake_map_ctx_http, nullptr);
+  poll.setCenter(40.03353, -84.19588, 25.0f);
+  poll.setActive(false);
+  poll.onTick(500);
+  TEST_ASSERT_EQUAL(0, g_map_ctx_http_calls);
+  poll.setActive(true);
+  poll.onTick(500);
+  TEST_ASSERT_EQUAL(1, g_map_ctx_http_calls);
+}
+
+void test_map_context_url_from_radar_home(void) {
+  char url[256];
+  TEST_ASSERT_TRUE(buildMapContextUrl(url, sizeof(url), kRadarHomeLat, kRadarHomeLon,
+                                    kRadarDefaultRangeMi));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "/api/map/context"));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "lat="));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "lon="));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "radiusMi="));
+}
+
 void test_adsb_url_from_radar_home(void) {
   char url[160];
   TEST_ASSERT_TRUE(buildAdsbLolUrl(url, sizeof(url), kRadarHomeLat, kRadarHomeLon,
@@ -597,6 +669,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_bind_clears_selection_when_gone);
   RUN_TEST(test_radar_zoom_preserves_selection_by_callsign);
   RUN_TEST(test_radar_temp_vs_pin_center);
+  RUN_TEST(test_map_context_poller_debounces_center);
+  RUN_TEST(test_map_context_poller_only_when_active);
+  RUN_TEST(test_map_context_url_from_radar_home);
   RUN_TEST(test_adsb_url_from_radar_home);
   RUN_TEST(test_idle_settle_clears_selection_keeps_range);
   RUN_TEST(test_radar_set_pois_adds_home_mark);

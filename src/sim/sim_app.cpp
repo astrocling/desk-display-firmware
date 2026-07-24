@@ -83,6 +83,7 @@ bool SimApp::init() {
   load_fixtures();
   sync_clock_from_wall();
   adsb_poll_.setHttpGet(&sim::simAdsbHttpGet, nullptr);
+  map_ctx_poll_.setHttpGet(&sim::simAdsbHttpGet, nullptr);
 
   root_ = lv_obj_create(lv_scr_act());
   lv_obj_set_size(root_, kDispW, kDispH);
@@ -746,11 +747,17 @@ void SimApp::update(uint32_t elapsed_ms) {
   // also only advances while Radar is visible.
   const bool radar_active = nav_.active_screen() == Screen::Radar;
   adsb_poll_.setActive(radar_active);
+  map_ctx_poll_.setActive(radar_active);
   if (radar_active) {
     radar_.onTick(elapsed_ms);
-    adsb_poll_.setCenter(radar_.centerLat(), radar_.centerLon(), radar_.rangeMiles());
+    const double lat = radar_.centerLat();
+    const double lon = radar_.centerLon();
+    const float range = radar_.rangeMiles();
+    adsb_poll_.setCenter(lat, lon, range);
+    map_ctx_poll_.setCenter(lat, lon, range);
   }
   adsb_poll_.onTick(elapsed_ms);
+  map_ctx_poll_.onTick(elapsed_ms);
 
   AircraftList fresh{};
   const bool got_fresh = adsb_poll_.takeAircraft(fresh);
@@ -758,9 +765,16 @@ void SimApp::update(uint32_t elapsed_ms) {
     radar_.bind(fresh);
   }
 
+  desk_display::MapContext mapCtx{};
+  const bool got_map_ctx = map_ctx_poll_.takeContext(mapCtx);
+  if (got_map_ctx) {
+    radar_.bindMapContext(mapCtx);
+  }
+
   if (nav_.active_screen() != last_screen_ || nav_.mode() != last_mode_) {
     rebuild_ui_for_active();
-  } else if (idle == desk_display::IdleEvent::SettleFocused || got_fresh || radar_active) {
+  } else if (idle == desk_display::IdleEvent::SettleFocused || got_fresh || got_map_ctx ||
+             radar_active) {
     // Refresh on settle (so cleared overlays render) and every tick while
     // Radar is up so the sweep keeps moving even with a target selected.
     refresh_content();

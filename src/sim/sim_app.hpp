@@ -1,6 +1,7 @@
 #pragma once
 
 #include "desk_display/adsb_poll.hpp"
+#include "desk_display/map_context_poll.hpp"
 #include "desk_display/nav.hpp"
 #include "desk_display/screen_clock.hpp"
 #include "desk_display/screen_radar.hpp"
@@ -39,6 +40,7 @@ class SimApp {
   desk_display::ScreenSports sports_;
   desk_display::ScreenRadar radar_;
   desk_display::AdsbPoller adsb_poll_;
+  desk_display::MapContextPoller map_ctx_poll_;
 
   lv_obj_t* root_ = nullptr;
   lv_obj_t* carousel_root_ = nullptr;
