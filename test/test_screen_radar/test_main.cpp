@@ -174,6 +174,8 @@ void test_radar_select_detail_card(void) {
   const RadarDetailCard card = screen.detailCard();
   TEST_ASSERT_TRUE(card.present);
   TEST_ASSERT_EQUAL_STRING(screen.blip(0).aircraft.callsign, card.callsign);
+  TEST_ASSERT_EQUAL_STRING(screen.blip(0).aircraft.type, card.type);
+  TEST_ASSERT_EQUAL_STRING(screen.blip(0).aircraft.squawk, card.squawk);
   TEST_ASSERT_EQUAL(screen.blip(0).aircraft.hasAlt, card.hasAlt);
   TEST_ASSERT_EQUAL(screen.blip(0).aircraft.hasSpeed, card.hasSpeed);
   if (card.hasAlt) {
@@ -182,6 +184,9 @@ void test_radar_select_detail_card(void) {
   if (card.hasSpeed) {
     TEST_ASSERT_FLOAT_WITHIN(0.1f, screen.blip(0).aircraft.speedKt,
                              card.speedKt);
+  }
+  if (card.type[0] || card.squawk[0]) {
+    TEST_ASSERT_TRUE(card.tagLine3[0] != '\0');
   }
 
   const RadarView v = screen.view();
@@ -205,6 +210,26 @@ void test_parse_adsb_track_and_rate(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 75.83f, list.items[0].trackDeg);
   TEST_ASSERT_TRUE(list.items[0].hasBaroRate);
   TEST_ASSERT_FLOAT_WITHIN(0.1f, -192.0f, list.items[0].baroRateFpm);
+}
+
+void test_parse_adsb_type_reg_squawk(void) {
+  const char* json =
+      "{\"ac\":[{\"hex\":\"abc\",\"flight\":\"UAL1\",\"r\":\"N12345\",\"t\":\"B738\","
+      "\"squawk\":\"1200\",\"lat\":40.0,\"lon\":-84.0,\"alt_baro\":30000}]}";
+  AircraftList list{};
+  TEST_ASSERT_TRUE(parseAdsb(json, list));
+  TEST_ASSERT_EQUAL(1, list.count);
+  TEST_ASSERT_EQUAL_STRING("UAL1", list.items[0].callsign);
+  TEST_ASSERT_EQUAL_STRING("B738", list.items[0].type);
+  TEST_ASSERT_EQUAL_STRING("N12345", list.items[0].registration);
+  TEST_ASSERT_EQUAL_STRING("1200", list.items[0].squawk);
+
+  const char* jsonNum =
+      "{\"ac\":[{\"hex\":\"def\",\"t\":\"C172\",\"squawk\":7700,\"lat\":40.0,\"lon\":-84.0}]}";
+  AircraftList list2{};
+  TEST_ASSERT_TRUE(parseAdsb(jsonNum, list2));
+  TEST_ASSERT_EQUAL_STRING("C172", list2.items[0].type);
+  TEST_ASSERT_EQUAL_STRING("7700", list2.items[0].squawk);
 }
 
 void test_parse_adsb_calc_track_and_geom_rate_fallback(void) {
@@ -440,6 +465,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_mode_toggle);
   RUN_TEST(test_radar_select_detail_card);
   RUN_TEST(test_parse_adsb_track_and_rate);
+  RUN_TEST(test_parse_adsb_type_reg_squawk);
   RUN_TEST(test_parse_adsb_calc_track_and_geom_rate_fallback);
   RUN_TEST(test_parse_adsb_missing_track_rate);
   RUN_TEST(test_radar_sweep_advances_and_wraps);

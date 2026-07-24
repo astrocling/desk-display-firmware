@@ -588,48 +588,12 @@ void SimApp::on_tap_focused(int16_t x, int16_t y) {
       break;
     case Screen::Radar: {
       const auto rv = radar_.view();
-
-      // Disc center in absolute display px: root_, focused_host_, and body_
-      // are all centered on the display and equal in size, so the disc
-      // (centered within body_) is centered on the display too. Plot radius
-      // matches whatever radar_lvgl_build sized the live disc to for body_.
-      constexpr float kDiscCenterX = static_cast<float>(kDispW) / 2.0f;
-      constexpr float kDiscCenterY = static_cast<float>(kDispH) / 2.0f;
-      // Generous so small dots / star glyphs are easy to tap on the sim.
-      constexpr float kHitRadiusPx = 36.0f;
-      const lv_coord_t discPx = desk_ui::radar_disc_px_for_parent(body_);
-      const float plotRadiusPx = desk_ui::radar_plot_radius_px(discPx);
-      const float scale = desk_ui::radar_blip_scale(rv.rangeMiles, plotRadiusPx);
-      const float rx = static_cast<float>(x) - kDiscCenterX;
-      const float ry = static_cast<float>(y) - kDiscCenterY;
-      const float hitR2 = kHitRadiusPx * kHitRadiusPx;
-
       std::size_t nearest = 0;
-      float nearestDistSq = -1.0f;
-      for (std::size_t i = 0; i < rv.blipCount; ++i) {
-        const auto& b = rv.blips[i];
-        // Only what the user can see: phosphor-live blips, or the current
-        // selection (which stays drawn after fade).
-        const bool visible =
-            b.litAgeMs < desk_display::kRadarBlipFadeMs ||
-            (rv.hasSelection && rv.selectedIndex == i);
-        if (!visible) {
-          continue;
-        }
-        const float dx = b.offsetXMi * scale - rx;
-        const float dy = -b.offsetYMi * scale - ry;
-        const float distSq = dx * dx + dy * dy;
-        if (nearestDistSq < 0.0f || distSq < nearestDistSq) {
-          nearestDistSq = distSq;
-          nearest = i;
-        }
-      }
-
-      if (nearestDistSq >= 0.0f && nearestDistSq <= hitR2) {
+      // Use the live disc's LVGL coords + plot scale (same as drawing).
+      if (desk_ui::radar_lvgl_hit_blip(body_, rv, x, y, &nearest)) {
         if (radar_.hasSelection() && radar_.selectedIndex() == nearest) {
           radar_.clearSelection();
         } else {
-          // Sweep keeps running; tag + card overlay the live disc.
           radar_.selectBlip(nearest);
         }
       } else {

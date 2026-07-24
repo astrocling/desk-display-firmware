@@ -50,6 +50,18 @@ bool formatRadarAltitude(char* buf, std::size_t bufLen, float altFt) {
   return true;
 }
 
+bool formatRadarAltitudeDense(char* buf, std::size_t bufLen, float altFt) {
+  if (!buf || bufLen == 0) {
+    return false;
+  }
+  const int hundreds = static_cast<int>(std::lroundf(altFt / 100.0f));
+  const int n = std::snprintf(buf, bufLen, "%03d", hundreds);
+  if (n < 0 || static_cast<std::size_t>(n) >= bufLen) {
+    return false;
+  }
+  return true;
+}
+
 bool formatRadarSpeed(char* buf, std::size_t bufLen, float speedKt) {
   if (!buf || bufLen == 0) {
     return false;
@@ -62,7 +74,20 @@ bool formatRadarSpeed(char* buf, std::size_t bufLen, float speedKt) {
   return true;
 }
 
-bool formatRadarTagLine2(char* buf, std::size_t bufLen, const Aircraft& ac) {
+bool formatRadarSpeedDense(char* buf, std::size_t bufLen, float speedKt) {
+  if (!buf || bufLen == 0) {
+    return false;
+  }
+  const int knots = static_cast<int>(std::lroundf(speedKt));
+  const int n = std::snprintf(buf, bufLen, "%03d", knots);
+  if (n < 0 || static_cast<std::size_t>(n) >= bufLen) {
+    return false;
+  }
+  return true;
+}
+
+bool formatRadarTagLine2(char* buf, std::size_t bufLen, const Aircraft& ac,
+                         RadarTagStyle style) {
   if (!buf || bufLen == 0) {
     return false;
   }
@@ -73,11 +98,16 @@ bool formatRadarTagLine2(char* buf, std::size_t bufLen, const Aircraft& ac) {
   std::size_t len = 0;
   buf[0] = '\0';
 
-  if (ac.hasAlt && formatRadarAltitude(altBuf, sizeof(altBuf), ac.altFt)) {
-    if (!appendSegment(buf, bufLen, len, altBuf)) {
-      return false;
+  const bool dense = style == RadarTagStyle::Dense;
+  if (ac.hasAlt) {
+    const bool ok = dense ? formatRadarAltitudeDense(altBuf, sizeof(altBuf), ac.altFt)
+                          : formatRadarAltitude(altBuf, sizeof(altBuf), ac.altFt);
+    if (ok) {
+      if (!appendSegment(buf, bufLen, len, altBuf)) {
+        return false;
+      }
+      wroteAny = true;
     }
-    wroteAny = true;
   }
 
   switch (radarTrendFromRate(ac.baroRateFpm, ac.hasBaroRate)) {
@@ -97,13 +127,40 @@ bool formatRadarTagLine2(char* buf, std::size_t bufLen, const Aircraft& ac) {
       break;
   }
 
-  if (ac.hasSpeed && formatRadarSpeed(speedBuf, sizeof(speedBuf), ac.speedKt)) {
-    if (!appendSegment(buf, bufLen, len, speedBuf)) {
+  if (ac.hasSpeed) {
+    const bool ok = dense ? formatRadarSpeedDense(speedBuf, sizeof(speedBuf), ac.speedKt)
+                          : formatRadarSpeed(speedBuf, sizeof(speedBuf), ac.speedKt);
+    if (ok) {
+      if (!appendSegment(buf, bufLen, len, speedBuf)) {
+        return false;
+      }
+      wroteAny = true;
+    }
+  }
+
+  return wroteAny;
+}
+
+bool formatRadarTagLine3(char* buf, std::size_t bufLen, const char* type,
+                         const char* squawk) {
+  if (!buf || bufLen == 0) {
+    return false;
+  }
+  std::size_t len = 0;
+  buf[0] = '\0';
+  bool wroteAny = false;
+  if (type && type[0] != '\0') {
+    if (!appendSegment(buf, bufLen, len, type)) {
       return false;
     }
     wroteAny = true;
   }
-
+  if (squawk && squawk[0] != '\0') {
+    if (!appendSegment(buf, bufLen, len, squawk)) {
+      return false;
+    }
+    wroteAny = true;
+  }
   return wroteAny;
 }
 

@@ -20,10 +20,10 @@ constexpr float kRadarDefaultRangeMi = 25.0f;
 constexpr float kRadarRangeStepMi = 5.0f;
 
 /**
- * At or below this range, traffic uses velocity vectors; above it, dense dots
- * (readable when the map is crowded at long range).
+ * At or below this range, traffic uses stars + velocity vectors + tags;
+ * above it, dense dots only (readable when the map is crowded at long range).
  */
-constexpr float kRadarVectorMaxRangeMi = 15.0f;
+constexpr float kRadarVectorMaxRangeMi = 25.0f;
 
 /** Classic sweep period — matches DeskRad / firmware (10 s per revolution). */
 constexpr uint32_t kRadarSweepPeriodMs = 10000;
@@ -64,8 +64,12 @@ struct RadarDetailCard {
   bool hasAlt;
   bool hasSpeed;
   char tagLine2[24];
+  char tagLine3[24];
   char altLabel[8];
   char speedLabel[8];
+  char type[8];
+  char registration[kMaxCallsign];
+  char squawk[8];
 };
 
 /** Snapshot for LVGL (or tests) to render the radar screen. */

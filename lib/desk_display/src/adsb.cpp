@@ -3,6 +3,7 @@
 #include "desk_display/radar.hpp"
 
 #include <ArduinoJson.h>
+#include <cstdio>
 #include <cstring>
 
 namespace desk_display {
@@ -64,6 +65,30 @@ bool parseAdsb(const char* json, AircraftList& out) {
       copyStr(item.callsign, sizeof(item.callsign), ac["r"].as<const char*>());
     } else if (!ac["hex"].isNull() && ac["hex"].is<const char*>()) {
       copyStr(item.callsign, sizeof(item.callsign), ac["hex"].as<const char*>());
+    }
+
+    item.type[0] = '\0';
+    if (!ac["t"].isNull() && ac["t"].is<const char*>()) {
+      copyStr(item.type, sizeof(item.type), ac["t"].as<const char*>());
+    }
+
+    item.registration[0] = '\0';
+    if (!ac["r"].isNull() && ac["r"].is<const char*>()) {
+      copyStr(item.registration, sizeof(item.registration),
+              ac["r"].as<const char*>());
+    }
+
+    item.squawk[0] = '\0';
+    if (!ac["squawk"].isNull()) {
+      if (ac["squawk"].is<const char*>()) {
+        copyStr(item.squawk, sizeof(item.squawk), ac["squawk"].as<const char*>());
+      } else {
+        // Some feeds encode squawk as an integer (e.g. 1200).
+        const long code = ac["squawk"].as<long>();
+        if (code >= 0 && code <= 7777) {
+          std::snprintf(item.squawk, sizeof(item.squawk), "%04ld", code);
+        }
+      }
     }
 
     item.hasAlt = false;

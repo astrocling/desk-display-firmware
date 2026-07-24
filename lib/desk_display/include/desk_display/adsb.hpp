@@ -9,6 +9,9 @@ constexpr std::size_t kMaxCallsign = 16;
 
 struct Aircraft {
   char callsign[kMaxCallsign];
+  char type[8];          // ICAO type designator from `t` (e.g. B738)
+  char registration[kMaxCallsign];  // from `r`
+  char squawk[8];        // Mode A code from `squawk`
   float altFt;     // barometric altitude when available; NaN if missing
   float speedKt;   // ground speed when available; NaN if missing
   float trackDeg;  // track heading when available; NaN if missing

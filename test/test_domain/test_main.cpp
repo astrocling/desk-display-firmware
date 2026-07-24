@@ -151,6 +151,35 @@ void test_format_radar_tag_line2_omits_missing(void) {
   TEST_ASSERT_FALSE(formatRadarTagLine2(buf, sizeof(buf), empty));
 }
 
+void test_format_radar_dense_and_line3(void) {
+  char buf[32];
+  TEST_ASSERT_TRUE(formatRadarAltitudeDense(buf, sizeof(buf), 33000.0f));
+  TEST_ASSERT_EQUAL_STRING("330", buf);
+  TEST_ASSERT_TRUE(formatRadarAltitudeDense(buf, sizeof(buf), 5200.0f));
+  TEST_ASSERT_EQUAL_STRING("052", buf);
+  TEST_ASSERT_TRUE(formatRadarSpeedDense(buf, sizeof(buf), 474.5f));
+  TEST_ASSERT_EQUAL_STRING("475", buf);
+
+  Aircraft ac{};
+  ac.hasAlt = true;
+  ac.altFt = 33000.0f;
+  ac.hasSpeed = true;
+  ac.speedKt = 450.0f;
+  ac.hasBaroRate = true;
+  ac.baroRateFpm = 128.0f;
+  TEST_ASSERT_TRUE(
+      formatRadarTagLine2(buf, sizeof(buf), ac, RadarTagStyle::Dense));
+  TEST_ASSERT_EQUAL_STRING("330 ^ 450", buf);
+
+  TEST_ASSERT_TRUE(formatRadarTagLine3(buf, sizeof(buf), "B738", "1200"));
+  TEST_ASSERT_EQUAL_STRING("B738 1200", buf);
+  TEST_ASSERT_TRUE(formatRadarTagLine3(buf, sizeof(buf), "C172", nullptr));
+  TEST_ASSERT_EQUAL_STRING("C172", buf);
+  TEST_ASSERT_TRUE(formatRadarTagLine3(buf, sizeof(buf), "", "7700"));
+  TEST_ASSERT_EQUAL_STRING("7700", buf);
+  TEST_ASSERT_FALSE(formatRadarTagLine3(buf, sizeof(buf), nullptr, ""));
+}
+
 void test_statute_to_nm_and_url(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.05f, 21.7244f, statuteMilesToNauticalMiles(25.0f));
   char url[160];
@@ -296,6 +325,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_format_radar_altitude_examples);
   RUN_TEST(test_radar_trend_deadband);
   RUN_TEST(test_format_radar_tag_line2_omits_missing);
+  RUN_TEST(test_format_radar_dense_and_line3);
   RUN_TEST(test_radar_offset_and_distance);
   RUN_TEST(test_statute_to_nm_and_url);
   RUN_TEST(test_adsb_poller_only_when_active);

@@ -306,8 +306,12 @@ RadarDetailCard ScreenRadar::detailCard() const {
   card.hasAlt = false;
   card.hasSpeed = false;
   card.tagLine2[0] = '\0';
+  card.tagLine3[0] = '\0';
   card.altLabel[0] = '\0';
   card.speedLabel[0] = '\0';
+  card.type[0] = '\0';
+  card.registration[0] = '\0';
+  card.squawk[0] = '\0';
 
   if (!hasSelection_ || selectedIndex_ >= blips_.count) {
     return card;
@@ -316,6 +320,9 @@ RadarDetailCard ScreenRadar::detailCard() const {
   const Aircraft& ac = blips_.items[selectedIndex_].aircraft;
   card.present = true;
   copyCallsign(card.callsign, sizeof(card.callsign), ac.callsign);
+  copyCallsign(card.type, sizeof(card.type), ac.type);
+  copyCallsign(card.registration, sizeof(card.registration), ac.registration);
+  copyCallsign(card.squawk, sizeof(card.squawk), ac.squawk);
   card.hasAlt = ac.hasAlt;
   card.hasSpeed = ac.hasSpeed;
   card.altFt = ac.altFt;
@@ -327,7 +334,9 @@ RadarDetailCard ScreenRadar::detailCard() const {
   if (ac.hasSpeed) {
     formatRadarSpeed(card.speedLabel, sizeof(card.speedLabel), ac.speedKt);
   }
-  formatRadarTagLine2(card.tagLine2, sizeof(card.tagLine2), ac);
+  formatRadarTagLine2(card.tagLine2, sizeof(card.tagLine2), ac,
+                      RadarTagStyle::Full);
+  formatRadarTagLine3(card.tagLine3, sizeof(card.tagLine3), ac.type, ac.squawk);
   return card;
 }
 

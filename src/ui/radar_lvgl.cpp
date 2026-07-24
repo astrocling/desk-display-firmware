@@ -1,6 +1,7 @@
 #include "radar_lvgl.hpp"
 
 #include "desk_display/radar.hpp"
+#include "desk_display/radar_format.hpp"
 #include "desk_display/screen_radar.hpp"
 #include "desk_display/theme.hpp"
 
@@ -19,6 +20,8 @@ constexpr uint32_t kSweepColor = 0x00FF00;
 constexpr uint32_t kDotColor = 0x00FF00;
 constexpr uint32_t kSelectedColor = 0xFFFFFF;
 constexpr uint32_t kLeaderColor = 0x3D9CF0;
+/** Unselected tag/leader opacity — readable but quieter than selection. */
+constexpr lv_opa_t kTagDimOpa = LV_OPA_60;
 
 // Compact phosphor trail — enough to read motion without washing the map.
 constexpr float kTrailArcDeg = 12.0f;
@@ -50,12 +53,11 @@ bool show_vectors(float rangeMiles) {
 lv_point_t g_sweep_points[2];
 lv_point_t g_trail_points[kTrailSlices][2];
 lv_point_t g_vector_points[kMaxDots][2];
-lv_point_t g_leader_points[2];
+lv_point_t g_leader_points[kMaxDots][2];
 
 // Animate cache — valid only while the built disc for `g_parent` is intact.
 lv_obj_t* g_parent = nullptr;
 lv_obj_t* g_hdr = nullptr;
-lv_obj_t* g_card = nullptr;
 lv_obj_t* g_disc = nullptr;
 lv_obj_t* g_trail_rays[kTrailSlices] = {};
 lv_obj_t* g_sweep_line = nullptr;
@@ -78,13 +80,6 @@ void format_header(char* hdr, std::size_t hdrLen, const desk_display::RadarView&
   std::snprintf(hdr, hdrLen, "%.0f mi · %zu%s",
                 static_cast<double>(v.rangeMiles), v.blipCount,
                 show_vectors(v.rangeMiles) ? " · vec" : "");
-}
-
-void format_detail_card_line(char* line, std::size_t lineLen,
-                             const desk_display::RadarView& v) {
-  std::snprintf(line, lineLen, "%s%s%s%s%s", v.detail.callsign,
-                v.detail.altLabel[0] ? "  " : "", v.detail.altLabel,
-                v.detail.speedLabel[0] ? "  " : "", v.detail.speedLabel);
 }
 
 void build_rings(lv_obj_t* disc) {
@@ -156,12 +151,15 @@ void build_sweep(lv_obj_t* disc, float sweepAngleDeg) {
   apply_trail_geometry(sweepAngleDeg);
 }
 
-void draw_selected_tag(lv_obj_t* layer, const desk_display::RadarView& v,
-                       lv_coord_t bx, lv_coord_t by) {
+void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
+                   const char* tagLine2, const char* tagLine3,
+                   uint32_t callsignColor, bool selected, lv_coord_t bx,
+                   lv_coord_t by) {
   // Place the tag toward disc center when the blip is near the rim so the
-  // round clip doesn't swallow callsign / alt lines.
+  // round clip doesn't swallow callsign / alt / type lines.
   constexpr lv_coord_t kLeaderLen = 18;
-  constexpr lv_coord_t kTagMargin = 36;
+  // Extra margin for the taller selected (3-line) tag block.
+  const lv_coord_t kTagMargin = selected ? 48 : 36;
   const lv_coord_t cx = g_disc_px / 2;
   const lv_coord_t cy = g_disc_px / 2;
   const float dx = static_cast<float>(cx - bx);
@@ -180,37 +178,55 @@ void draw_selected_tag(lv_obj_t* layer, const desk_display::RadarView& v,
   }
   const lv_coord_t tagX = bx + leaderDx;
   const lv_coord_t tagY = by + leaderDy;
+  const lv_opa_t opa = selected ? LV_OPA_COVER : kTagDimOpa;
+  // Selected: callsign above line2; unselected dense: same. Line3 below line2.
+  const lv_coord_t line1Y = tagY - 12;
+  const lv_coord_t line2Y = tagY;
+  const lv_coord_t line3Y = tagY + 12;
 
-  g_leader_points[0] = {bx, by};
-  g_leader_points[1] = {tagX, tagY};
+  g_leader_points[blipIndex][0] = {bx, by};
+  g_leader_points[blipIndex][1] = {tagX, tagY};
 
   lv_obj_t* leader = lv_line_create(layer);
   lv_obj_set_pos(leader, 0, 0);
-  lv_line_set_points(leader, g_leader_points, 2);
-  lv_obj_set_style_line_width(leader, 1, 0);
+  lv_line_set_points(leader, g_leader_points[blipIndex], 2);
+  lv_obj_set_style_line_width(leader, selected ? 2 : 1, 0);
   lv_obj_set_style_line_color(leader, rgb(kLeaderColor), 0);
+  lv_obj_set_style_line_opa(leader, opa, 0);
   lv_obj_set_style_line_rounded(leader, false, 0);
   lv_obj_clear_flag(leader, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_clear_flag(leader, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* tag = lv_label_create(layer);
-  lv_label_set_text(tag, v.detail.callsign[0] ? v.detail.callsign : "?");
-  lv_obj_set_style_text_font(tag, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_color(tag, rgb(kSelectedColor), 0);
-  lv_obj_set_pos(tag, tagX, tagY - 14);
+  lv_label_set_text(tag, (callsign && callsign[0]) ? callsign : "?");
+  lv_obj_set_style_text_font(tag, &lv_font_montserrat_10, 0);
+  lv_obj_set_style_text_color(tag, rgb(callsignColor), 0);
+  lv_obj_set_style_text_opa(tag, opa, 0);
+  lv_obj_set_pos(tag, tagX, line1Y);
 
-  if (v.detail.tagLine2[0] != '\0') {
+  if (tagLine2 && tagLine2[0] != '\0') {
     lv_obj_t* tag2 = lv_label_create(layer);
-    lv_label_set_text(tag2, v.detail.tagLine2);
-    lv_obj_set_style_text_font(tag2, &lv_font_montserrat_12, 0);
+    lv_label_set_text(tag2, tagLine2);
+    lv_obj_set_style_text_font(tag2, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_color(tag2, rgb(desk_display::theme::kAccent), 0);
-    lv_obj_set_pos(tag2, tagX, tagY);
+    lv_obj_set_style_text_opa(tag2, opa, 0);
+    lv_obj_set_pos(tag2, tagX, line2Y);
+  }
+
+  if (selected && tagLine3 && tagLine3[0] != '\0') {
+    lv_obj_t* tag3 = lv_label_create(layer);
+    lv_label_set_text(tag3, tagLine3);
+    lv_obj_set_style_text_font(tag3, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(tag3, rgb(desk_display::theme::kAccent), 0);
+    lv_obj_set_style_text_opa(tag3, opa, 0);
+    lv_obj_set_pos(tag3, tagX, line3Y);
   }
 }
 
 /**
- * Traffic layer: dense dots at long range; stars + velocity vectors when
- * zoomed in. Selected target stays bright and gets an ATC-lite tag.
+ * Traffic layer: ≤25 mi → stars + vectors + tags on every painted blip;
+ * above that → dense dots only (still selectable). Dense tags for unselected;
+ * selected gets full-contrast 3-line tag.
  */
 void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
   const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
@@ -266,6 +282,21 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
         lv_obj_clear_flag(vec, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(vec, LV_OBJ_FLAG_SCROLLABLE);
       }
+
+      char tagLine2[24];
+      char tagLine3[24];
+      tagLine2[0] = '\0';
+      tagLine3[0] = '\0';
+      const auto style = selected ? desk_display::RadarTagStyle::Full
+                                  : desk_display::RadarTagStyle::Dense;
+      desk_display::formatRadarTagLine2(tagLine2, sizeof(tagLine2), b.aircraft,
+                                        style);
+      if (selected) {
+        desk_display::formatRadarTagLine3(tagLine3, sizeof(tagLine3),
+                                          b.aircraft.type, b.aircraft.squawk);
+      }
+      draw_blip_tag(layer, i, b.aircraft.callsign, tagLine2, tagLine3, markColor,
+                    selected, bx, by);
     } else {
       const float ageFrac =
           static_cast<float>(b.litAgeMs) /
@@ -287,40 +318,12 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
       lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_align(dot, LV_ALIGN_CENTER, x, y);
     }
-
-    if (selected && v.detail.present) {
-      draw_selected_tag(layer, v, bx, by);
-    }
   }
-}
-
-void update_detail_card(lv_obj_t* parent, const desk_display::RadarView& v) {
-  if (!(v.hasSelection && v.detail.present)) {
-    if (g_card) {
-      lv_obj_add_flag(g_card, LV_OBJ_FLAG_HIDDEN);
-    }
-    return;
-  }
-
-  char line[48];
-  format_detail_card_line(line, sizeof(line), v);
-
-  if (!g_card) {
-    g_card = lv_label_create(parent);
-    // Below header, inside the round viewport (bottom was clipped before).
-    lv_obj_set_style_text_font(g_card, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(g_card, rgb(kSelectedColor), 0);
-    lv_obj_align(g_card, LV_ALIGN_TOP_MID, 0, 18);
-  }
-  lv_label_set_text(g_card, line);
-  lv_obj_clear_flag(g_card, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_move_foreground(g_card);
 }
 
 void clear_animate_cache() {
   g_parent = nullptr;
   g_hdr = nullptr;
-  g_card = nullptr;
   g_disc = nullptr;
   g_sweep_line = nullptr;
   g_blips_layer = nullptr;
@@ -335,6 +338,54 @@ void clear_animate_cache() {
 }  // namespace
 
 void radar_lvgl_invalidate() { clear_animate_cache(); }
+
+bool radar_lvgl_hit_blip(lv_obj_t* parent, const desk_display::RadarView& v,
+                         lv_coord_t absX, lv_coord_t absY, std::size_t* outIndex) {
+  if (!outIndex || !parent || parent != g_parent || !g_built || !g_disc ||
+      g_disc_px <= 0 || g_plot_radius_px <= 0.0f || !v.blips) {
+    return false;
+  }
+
+  // Match drawn geometry: blip positions are relative to the live disc object.
+  lv_area_t discArea{};
+  lv_obj_get_coords(g_disc, &discArea);
+  const float cx = static_cast<float>(discArea.x1) + static_cast<float>(g_disc_px) / 2.0f;
+  const float cy = static_cast<float>(discArea.y1) + static_cast<float>(g_disc_px) / 2.0f;
+  const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
+  const float rx = static_cast<float>(absX) - cx;
+  const float ry = static_cast<float>(absY) - cy;
+
+  // Large enough to cover the star/dot and the ATC tag offset from the blip.
+  constexpr float kHitRadiusPx = 52.0f;
+  const float hitR2 = kHitRadiusPx * kHitRadiusPx;
+
+  const std::size_t count =
+      v.blipCount < static_cast<std::size_t>(kMaxDots) ? v.blipCount : kMaxDots;
+  std::size_t nearest = 0;
+  float nearestDistSq = -1.0f;
+  for (std::size_t i = 0; i < count; ++i) {
+    const auto& b = v.blips[i];
+    const bool visible =
+        b.litAgeMs < desk_display::kRadarBlipFadeMs ||
+        (v.hasSelection && v.selectedIndex == i);
+    if (!visible) {
+      continue;
+    }
+    const float dx = b.offsetXMi * scale - rx;
+    const float dy = -b.offsetYMi * scale - ry;
+    const float distSq = dx * dx + dy * dy;
+    if (nearestDistSq < 0.0f || distSq < nearestDistSq) {
+      nearestDistSq = distSq;
+      nearest = i;
+    }
+  }
+
+  if (nearestDistSq < 0.0f || nearestDistSq > hitR2) {
+    return false;
+  }
+  *outIndex = nearest;
+  return true;
+}
 
 bool radar_lvgl_animate_classic(lv_obj_t* parent,
                                 const desk_display::RadarView& v) {
@@ -358,7 +409,6 @@ bool radar_lvgl_animate_classic(lv_obj_t* parent,
 
   lv_obj_clean(g_blips_layer);
   build_traffic(g_blips_layer, v);
-  update_detail_card(parent, v);
   return true;
 }
 
@@ -400,7 +450,6 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
 
   g_parent = parent;
   g_built = true;
-  update_detail_card(parent, v);
 }
 
 }  // namespace desk_ui

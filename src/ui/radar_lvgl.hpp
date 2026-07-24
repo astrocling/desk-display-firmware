@@ -66,4 +66,13 @@ bool radar_lvgl_animate_classic(lv_obj_t* parent,
 /** Drop cached object pointers after the parent was cleaned or destroyed. */
 void radar_lvgl_invalidate();
 
+/**
+ * Hit-test a tap in absolute display coordinates against the live radar disc.
+ * Uses the same disc origin / scale as drawing. Only phosphor-visible blips
+ * (or the current selection) are candidates. Returns true and writes
+ * `*outIndex` when a blip is within the hit radius.
+ */
+bool radar_lvgl_hit_blip(lv_obj_t* parent, const desk_display::RadarView& v,
+                         lv_coord_t absX, lv_coord_t absY, std::size_t* outIndex);
+
 }  // namespace desk_ui

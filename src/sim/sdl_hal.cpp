@@ -45,6 +45,20 @@ void mouse_read_cb(lv_indev_drv_t* /*drv*/, lv_indev_data_t* data) {
   data->state = mouse_down_ ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 
+void map_mouse_to_display(int window_x, int window_y) {
+  if (renderer_) {
+    float lx = 0.0f;
+    float ly = 0.0f;
+    SDL_RenderWindowToLogical(renderer_, window_x, window_y, &lx, &ly);
+    mouse_x_ = static_cast<int>(lx);
+    mouse_y_ = static_cast<int>(ly);
+    return;
+  }
+  // Fallback: divide by window zoom when renderer is unavailable.
+  mouse_x_ = window_x / kZoom;
+  mouse_y_ = window_y / kZoom;
+}
+
 void map_key(SDL_Keycode key, bool down) {
   if (!down) {
     return;
@@ -172,32 +186,22 @@ bool hal_poll(bool& quit) {
       case SDL_MOUSEBUTTONDOWN:
         if (e.button.button == SDL_BUTTON_LEFT) {
           mouse_down_ = true;
-          float lx = 0, ly = 0;
-          SDL_RenderWindowToLogical(renderer_, e.button.x, e.button.y, &lx, &ly);
-          mouse_x_ = static_cast<int>(lx);
-          mouse_y_ = static_cast<int>(ly);
+          map_mouse_to_display(e.button.x, e.button.y);
         }
         break;
       case SDL_MOUSEBUTTONUP:
         if (e.button.button == SDL_BUTTON_LEFT) {
           mouse_down_ = false;
-          float lx = 0, ly = 0;
-          SDL_RenderWindowToLogical(renderer_, e.button.x, e.button.y, &lx, &ly);
-          mouse_x_ = static_cast<int>(lx);
-          mouse_y_ = static_cast<int>(ly);
+          map_mouse_to_display(e.button.x, e.button.y);
           // Mouse click maps to capacitive tap (device touch → KeyEvents.tap).
           pending_.tap = true;
           pending_.tap_x = static_cast<int16_t>(mouse_x_);
           pending_.tap_y = static_cast<int16_t>(mouse_y_);
         }
         break;
-      case SDL_MOUSEMOTION: {
-        float lx = 0, ly = 0;
-        SDL_RenderWindowToLogical(renderer_, e.motion.x, e.motion.y, &lx, &ly);
-        mouse_x_ = static_cast<int>(lx);
-        mouse_y_ = static_cast<int>(ly);
+      case SDL_MOUSEMOTION:
+        map_mouse_to_display(e.motion.x, e.motion.y);
         break;
-      }
       default:
         break;
     }
