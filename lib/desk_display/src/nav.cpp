@@ -73,24 +73,30 @@ void Nav::on_double_tap() { note_activity(); }
 
 void Nav::on_long_press() { note_activity(); }
 
-void Nav::on_tick(uint32_t elapsed_ms) {
+IdleEvent Nav::on_tick(uint32_t elapsed_ms) {
   if (elapsed_ms == 0) {
-    return;
+    return IdleEvent::None;
   }
 
-  // Already at idle home: keep timer cleared so we do not re-fire.
+  // Focused Clock home: do not accumulate / re-fire.
   if (mode_ == NavMode::Focused && focused_ == Screen::Clock &&
       highlighted_ == Screen::Clock) {
     idle_elapsed_ms_ = 0;
-    return;
+    return IdleEvent::None;
   }
 
   const uint32_t room = kIdleTimeoutMs - idle_elapsed_ms_;
   if (elapsed_ms >= room) {
-    apply_idle_home();
-    return;
+    idle_elapsed_ms_ = 0;
+    if (mode_ == NavMode::Carousel) {
+      apply_idle_home();
+      return IdleEvent::HomeToClock;
+    }
+    // Focused: stay on current app; shell settles ephemeral UI.
+    return IdleEvent::SettleFocused;
   }
   idle_elapsed_ms_ += elapsed_ms;
+  return IdleEvent::None;
 }
 
 }  // namespace desk_display

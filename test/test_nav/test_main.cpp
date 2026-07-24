@@ -4,6 +4,7 @@
 #include <desk_display/screens_stub.hpp>
 #include <desk_display/theme.hpp>
 
+using desk_display::IdleEvent;
 using desk_display::kIdleTimeoutMs;
 using desk_display::Nav;
 using desk_display::NavMode;
@@ -111,14 +112,12 @@ void test_focused_rotate_does_not_change_screen(void) {
                     static_cast<int>(nav.active_screen()));
 }
 
-void test_idle_timeout_returns_focused_clock(void) {
-  nav.on_center_tap();
-  nav.on_rotate(4);  // Radar
-  nav.on_center_tap();
-  TEST_ASSERT_EQUAL(static_cast<int>(Screen::Radar),
-                    static_cast<int>(nav.focused()));
-
-  nav.on_tick(kIdleTimeoutMs);
+void test_idle_timeout_from_carousel_homes_to_clock(void) {
+  nav.on_center_tap();  // Carousel
+  nav.on_rotate(2);     // Weather highlighted
+  const desk_display::IdleEvent ev = nav.on_tick(kIdleTimeoutMs);
+  TEST_ASSERT_EQUAL(static_cast<int>(desk_display::IdleEvent::HomeToClock),
+                    static_cast<int>(ev));
   TEST_ASSERT_EQUAL(static_cast<int>(NavMode::Focused),
                     static_cast<int>(nav.mode()));
   TEST_ASSERT_EQUAL(static_cast<int>(Screen::Clock),
@@ -128,23 +127,30 @@ void test_idle_timeout_returns_focused_clock(void) {
   TEST_ASSERT_EQUAL_UINT32(0, nav.idle_elapsed_ms());
 }
 
-void test_idle_timeout_from_carousel(void) {
+void test_idle_timeout_focused_stays_and_settles(void) {
   nav.on_center_tap();
-  nav.on_rotate(2);
-  TEST_ASSERT_EQUAL(static_cast<int>(NavMode::Carousel),
-                    static_cast<int>(nav.mode()));
+  nav.on_rotate(4);  // Radar
+  nav.on_center_tap();
+  TEST_ASSERT_EQUAL(static_cast<int>(Screen::Radar),
+                    static_cast<int>(nav.focused()));
 
-  nav.on_tick(kIdleTimeoutMs - 1);
-  TEST_ASSERT_EQUAL(static_cast<int>(NavMode::Carousel),
-                    static_cast<int>(nav.mode()));
-  TEST_ASSERT_EQUAL(static_cast<int>(Screen::Weather),
-                    static_cast<int>(nav.highlighted()));
-
-  nav.on_tick(1);
+  const desk_display::IdleEvent ev = nav.on_tick(kIdleTimeoutMs);
+  TEST_ASSERT_EQUAL(static_cast<int>(desk_display::IdleEvent::SettleFocused),
+                    static_cast<int>(ev));
   TEST_ASSERT_EQUAL(static_cast<int>(NavMode::Focused),
                     static_cast<int>(nav.mode()));
-  TEST_ASSERT_EQUAL(static_cast<int>(Screen::Clock),
+  TEST_ASSERT_EQUAL(static_cast<int>(Screen::Radar),
                     static_cast<int>(nav.focused()));
+  TEST_ASSERT_EQUAL_UINT32(0, nav.idle_elapsed_ms());
+}
+
+void test_idle_tick_none_before_timeout(void) {
+  nav.on_center_tap();
+  const desk_display::IdleEvent ev = nav.on_tick(kIdleTimeoutMs / 2);
+  TEST_ASSERT_EQUAL(static_cast<int>(desk_display::IdleEvent::None),
+                    static_cast<int>(ev));
+  TEST_ASSERT_EQUAL(static_cast<int>(NavMode::Carousel),
+                    static_cast<int>(nav.mode()));
 }
 
 void test_activity_resets_idle_timer(void) {
@@ -213,8 +219,9 @@ int main(int argc, char **argv) {
   RUN_TEST(test_carousel_center_tap_enters_focused);
   RUN_TEST(test_focused_center_tap_returns_to_carousel);
   RUN_TEST(test_focused_rotate_does_not_change_screen);
-  RUN_TEST(test_idle_timeout_returns_focused_clock);
-  RUN_TEST(test_idle_timeout_from_carousel);
+  RUN_TEST(test_idle_timeout_from_carousel_homes_to_clock);
+  RUN_TEST(test_idle_timeout_focused_stays_and_settles);
+  RUN_TEST(test_idle_tick_none_before_timeout);
   RUN_TEST(test_activity_resets_idle_timer);
   RUN_TEST(test_idle_home_does_not_rearm_while_already_home);
   RUN_TEST(test_screen_ops_registry_non_null);

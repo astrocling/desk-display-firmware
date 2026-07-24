@@ -23,6 +23,13 @@ enum class NavMode : uint8_t {
 /** Idle home: Focused on Clock (viewing the clock face, not browsing carousel). */
 constexpr uint32_t kIdleTimeoutMs = 60000;
 
+/** Idle timeout outcome for shell handling. */
+enum class IdleEvent : uint8_t {
+  None = 0,
+  HomeToClock,     // Carousel → Focused Clock
+  SettleFocused,   // Focused non-home → stay; shell must settle screens
+};
+
 class Nav {
  public:
   Nav();
@@ -48,7 +55,7 @@ class Nav {
   void on_long_press();
 
   /** Advance idle timer by elapsed milliseconds; may trigger home fallback. */
-  void on_tick(uint32_t elapsed_ms);
+  IdleEvent on_tick(uint32_t elapsed_ms);
 
   /** Clear idle accumulator without changing mode/screen. */
   void idle_reset();
