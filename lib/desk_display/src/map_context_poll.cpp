@@ -53,35 +53,45 @@ void MapContextPoller::onTick(uint32_t elapsedMs) {
     return;
   }
 
-  if (tryPollOnce()) {
-    needsFetch_ = false;
+  const uint32_t fetchMs = debounceMs_ - kMapContextDebounceMs;
+
+  switch (tryPollOnce()) {
+    case PollAttemptResult::Success:
+    case PollAttemptResult::HardFail:
+      needsFetch_ = false;
+      break;
+    case PollAttemptResult::Retry:
+      if (fetchMs >= kAdsbFetchMaxWaitMs) {
+        needsFetch_ = false;
+      }
+      break;
   }
 }
 
-bool MapContextPoller::tryPollOnce() {
+MapContextPoller::PollAttemptResult MapContextPoller::tryPollOnce() {
   char url[256];
   if (!buildMapContextUrl(url, sizeof(url), centerLat_, centerLon_, rangeMi_)) {
-    return false;
+    return PollAttemptResult::HardFail;
   }
 
   std::size_t bodyLen = 0;
   if (!httpGet_(url, body_, sizeof(body_), bodyLen, httpUser_)) {
-    return false;
+    return PollAttemptResult::Retry;
   }
   if (bodyLen >= sizeof(body_)) {
-    return false;
+    return PollAttemptResult::HardFail;
   }
   body_[bodyLen] = '\0';
 
   MapContext parsed{};
   if (!parseMapContext(body_, parsed)) {
-    return false;
+    return PollAttemptResult::HardFail;
   }
 
   lastGood_ = parsed;
   hasLastGood_ = true;
   hasPending_ = true;
-  return true;
+  return PollAttemptResult::Success;
 }
 
 bool MapContextPoller::takeContext(MapContext& out) {

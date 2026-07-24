@@ -24,7 +24,8 @@ class MapContextPoller {
   bool hasLastGood() const;
 
  private:
-  bool tryPollOnce();
+  enum class PollAttemptResult { Success, Retry, HardFail };
+  PollAttemptResult tryPollOnce();
 
   AdsbHttpGetFn httpGet_{nullptr};
   void* httpUser_{nullptr};

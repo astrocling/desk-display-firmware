@@ -415,11 +415,15 @@ void test_radar_zoom_preserves_selection_by_callsign(void) {
 
 static int g_map_ctx_http_calls;
 static char g_last_map_ctx_url[256];
+static bool g_map_ctx_http_fail;
 
 static bool fake_map_ctx_http(const char* url, char* body, std::size_t cap,
                               std::size_t& len, void*) {
   std::snprintf(g_last_map_ctx_url, sizeof(g_last_map_ctx_url), "%s", url);
   ++g_map_ctx_http_calls;
+  if (g_map_ctx_http_fail) {
+    return false;
+  }
   const char* json =
       "{\"airports\":[{\"icao\":\"KT\",\"name\":\"Test\",\"lat\":40.0,\"lon\":-84.0}],"
       "\"rings\":[]}";
@@ -472,6 +476,43 @@ void test_map_context_poller_only_when_active(void) {
   poll.setActive(true);
   poll.onTick(500);
   TEST_ASSERT_EQUAL(1, g_map_ctx_http_calls);
+}
+
+void test_map_context_poller_stops_on_persistent_failure(void) {
+  g_map_ctx_http_calls = 0;
+  g_map_ctx_http_fail = false;
+  MapContextPoller poll;
+  poll.setHttpGet(fake_map_ctx_http, nullptr);
+  poll.setActive(true);
+  poll.setCenter(40.03353, -84.19588, 25.0f);
+  poll.onTick(500);
+  TEST_ASSERT_EQUAL(1, g_map_ctx_http_calls);
+
+  MapContext ctx{};
+  TEST_ASSERT_TRUE(poll.takeContext(ctx));
+  TEST_ASSERT_EQUAL(1, ctx.airportCount);
+  TEST_ASSERT_EQUAL_STRING("KT", ctx.airports[0].icao);
+
+  g_map_ctx_http_fail = true;
+  poll.setCenter(40.05, -84.2, 25.0f);
+  const int callsAfterSuccess = g_map_ctx_http_calls;
+  for (int i = 0; i < 200; ++i) {
+    poll.onTick(100);
+  }
+
+  const int failurePhaseCalls = g_map_ctx_http_calls - callsAfterSuccess;
+  TEST_ASSERT_TRUE(failurePhaseCalls > 0);
+  // Debounce + retries only until kAdsbFetchMaxWaitMs, not every tick forever.
+  TEST_ASSERT_TRUE(failurePhaseCalls <= 90);
+
+  const int callsAfterBudget = g_map_ctx_http_calls;
+  for (int i = 0; i < 50; ++i) {
+    poll.onTick(100);
+  }
+  TEST_ASSERT_EQUAL(callsAfterBudget, g_map_ctx_http_calls);
+  TEST_ASSERT_TRUE(poll.hasLastGood());
+  TEST_ASSERT_EQUAL(1, ctx.airportCount);
+  TEST_ASSERT_EQUAL_STRING("KT", ctx.airports[0].icao);
 }
 
 void test_map_context_url_from_radar_home(void) {
@@ -671,6 +712,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_temp_vs_pin_center);
   RUN_TEST(test_map_context_poller_debounces_center);
   RUN_TEST(test_map_context_poller_only_when_active);
+  RUN_TEST(test_map_context_poller_stops_on_persistent_failure);
   RUN_TEST(test_map_context_url_from_radar_home);
   RUN_TEST(test_adsb_url_from_radar_home);
   RUN_TEST(test_idle_settle_clears_selection_keeps_range);
