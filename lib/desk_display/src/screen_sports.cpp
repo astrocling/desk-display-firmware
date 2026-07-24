@@ -90,6 +90,8 @@ void ScreenSports::onTap() {
 
 void ScreenSports::exitDetail() { detail_ = false; }
 
+void ScreenSports::onIdleSettle() { exitDetail(); }
+
 void ScreenSports::formatRaceSummary(char* dest, std::size_t destLen,
                                      const FlagstandRace& race) {
   if (!dest || destLen == 0) {

@@ -151,6 +151,16 @@ void test_status_from_offset_table(void) {
                     static_cast<int>(v.rows[4].status));
 }
 
+void test_idle_settle_resets_scrub(void) {
+  ScreenTimezones board;
+  board.setLiveUnix(12 * 3600);
+  board.onTapRow(5);
+  board.onRotate(4);
+  board.onIdleSettle();
+  TEST_ASSERT_EQUAL(0, board.scrubSteps());
+  TEST_ASSERT_EQUAL_UINT(0, board.anchorIndex());
+}
+
 void test_sun_times_fixture_daylight_override(void) {
   TEST_ASSERT_TRUE(loadFixture("timezones.json", g_buf, sizeof(g_buf)));
   Timezones tz{};
@@ -193,5 +203,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_status_icons_from_injected_local_hours);
   RUN_TEST(test_status_from_offset_table);
   RUN_TEST(test_sun_times_fixture_daylight_override);
+  RUN_TEST(test_idle_settle_resets_scrub);
   return UNITY_END();
 }

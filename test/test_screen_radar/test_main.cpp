@@ -351,6 +351,19 @@ void test_adsb_url_from_radar_home(void) {
   TEST_ASSERT_NOT_NULL(std::strstr(url, "/dist/"));
 }
 
+void test_idle_settle_clears_selection_keeps_range(void) {
+  ScreenRadar screen;
+  screen.bind(loadAdsbFixture());
+  paintFullRevolution(screen);
+  screen.onRotate(1);
+  const float rangeAfterZoom = screen.rangeMiles();
+  TEST_ASSERT_TRUE(screen.selectBlip(0));
+  TEST_ASSERT_TRUE(screen.hasSelection());
+  screen.onIdleSettle();
+  TEST_ASSERT_FALSE(screen.hasSelection());
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, rangeAfterZoom, screen.rangeMiles());
+}
+
 void test_radar_temp_vs_pin_center(void) {
   ScreenRadar screen;
   screen.bind(loadAdsbFixture());
@@ -436,5 +449,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_zoom_preserves_selection_by_callsign);
   RUN_TEST(test_radar_temp_vs_pin_center);
   RUN_TEST(test_adsb_url_from_radar_home);
+  RUN_TEST(test_idle_settle_clears_selection_keeps_range);
   return UNITY_END();
 }

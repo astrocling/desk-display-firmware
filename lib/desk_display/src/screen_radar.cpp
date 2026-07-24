@@ -295,6 +295,8 @@ void ScreenRadar::clearSelection() {
   selectedIndex_ = 0;
 }
 
+void ScreenRadar::onIdleSettle() { clearSelection(); }
+
 RadarDetailCard ScreenRadar::detailCard() const {
   RadarDetailCard card{};
   card.present = false;

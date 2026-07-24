@@ -121,6 +121,11 @@ void WeatherScreen::snapToNow() {
   scrubIndex_ = kWeatherScrubNow;
 }
 
+void WeatherScreen::onIdleSettle() {
+  snapToNow();
+  closeAlertDetail();
+}
+
 bool WeatherScreen::openAlertDetail() {
   if (!ready_ || !weather_.alert.present) {
     return false;

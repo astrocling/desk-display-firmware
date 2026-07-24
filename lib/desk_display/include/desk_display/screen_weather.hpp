@@ -75,6 +75,9 @@ class WeatherScreen {
   /** Idle / explicit reset: center display back to live current conditions. */
   void snapToNow();
 
+  /** Focused idle settle: snap to now and close alert detail. */
+  void onIdleSettle();
+
   /**
    * Open alert detail (severity + headline). Returns false when no alert
    * or not ready.

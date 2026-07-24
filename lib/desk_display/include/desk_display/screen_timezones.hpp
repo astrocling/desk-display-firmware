@@ -91,6 +91,9 @@ class ScreenTimezones {
   void onDoubleTap();
   void onLongPress();
 
+  /** Focused idle settle: same reset as double-tap. */
+  void onIdleSettle();
+
   TimezoneBoardView view() const;
 
  private:

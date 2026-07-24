@@ -162,6 +162,8 @@ void ScreenTimezones::onDoubleTap() {
   anchorIndex_ = 0;
 }
 
+void ScreenTimezones::onIdleSettle() { onDoubleTap(); }
+
 void ScreenTimezones::onLongPress() {
   scrubSteps_ = 0;
   anchorIndex_ = 0;

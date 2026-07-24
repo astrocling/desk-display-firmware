@@ -218,6 +218,17 @@ void test_unbind_clears_ready(void) {
   TEST_ASSERT_FALSE(g_screen.view().ready);
 }
 
+void test_idle_settle_exits_detail(void) {
+  TEST_ASSERT_TRUE(loadFixture("scores.json", g_buf, sizeof(g_buf)));
+  Scores s{};
+  TEST_ASSERT_TRUE(parseScores(g_buf, s));
+  g_screen.bind(s);
+  g_screen.onTap();
+  TEST_ASSERT_TRUE(g_screen.view().detail);
+  g_screen.onIdleSettle();
+  TEST_ASSERT_FALSE(g_screen.view().detail);
+}
+
 void test_rotate_ignored_when_unbound(void) {
   g_screen.onRotate(1);
   TEST_ASSERT_EQUAL(static_cast<int>(SportsCard::Mlb),
@@ -239,5 +250,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_detail_toggle);
   RUN_TEST(test_unbind_clears_ready);
   RUN_TEST(test_rotate_ignored_when_unbound);
+  RUN_TEST(test_idle_settle_exits_detail);
   return UNITY_END();
 }

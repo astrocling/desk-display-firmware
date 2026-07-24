@@ -175,6 +175,21 @@ void test_when_label_current_and_hourly(void) {
   TEST_ASSERT_EQUAL_STRING("6 PM", v.whenLabel);
 }
 
+void test_idle_settle_snaps_and_closes_alert(void) {
+  TEST_ASSERT_TRUE(loadFixture("weather.json", g_buf, sizeof(g_buf)));
+  Weather w{};
+  TEST_ASSERT_TRUE(parseWeather(g_buf, w));
+  g_screen.bind(w);
+
+  g_screen.onRotate(1);
+  TEST_ASSERT_FALSE(g_screen.view().showingNow);
+  (void)g_screen.openAlertDetail();  // ok if false when no alert
+  g_screen.onIdleSettle();
+  TEST_ASSERT_TRUE(g_screen.view().showingNow);
+  TEST_ASSERT_EQUAL(kWeatherScrubNow, g_screen.scrubIndex());
+  TEST_ASSERT_FALSE(g_screen.alertDetailOpen());
+}
+
 void test_strip_window_now_and_scrub(void) {
   TEST_ASSERT_TRUE(loadFixture("weather.json", g_buf, sizeof(g_buf)));
   Weather w{};
@@ -217,5 +232,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_clear_returns_not_ready);
   RUN_TEST(test_when_label_current_and_hourly);
   RUN_TEST(test_strip_window_now_and_scrub);
+  RUN_TEST(test_idle_settle_snaps_and_closes_alert);
   return UNITY_END();
 }

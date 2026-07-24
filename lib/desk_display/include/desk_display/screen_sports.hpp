@@ -94,6 +94,9 @@ class ScreenSports {
   /** Leave detail mode back to card summary. */
   void exitDetail();
 
+  /** Focused idle settle: leave detail mode. */
+  void onIdleSettle();
+
   SportsView view() const;
 
  private:

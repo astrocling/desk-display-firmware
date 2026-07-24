@@ -171,6 +171,9 @@ class ScreenRadar {
    */
   void revertTempCenter();
 
+  /** Focused idle settle: clear blip selection only. */
+  void onIdleSettle();
+
   RadarView view() const;
 
  private:
