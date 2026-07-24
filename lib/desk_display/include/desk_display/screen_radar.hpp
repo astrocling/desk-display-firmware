@@ -75,6 +75,13 @@ struct RadarAirspaceRingView {
   uint8_t pointCount;
 };
 
+/** Projected interstate polyline vertices. */
+struct RadarHighwayView {
+  float offsetXMi[80];
+  float offsetYMi[80];
+  uint8_t pointCount;
+};
+
 /** Selected aircraft detail card fields. */
 struct RadarDetailCard {
   bool present;
@@ -111,6 +118,8 @@ struct RadarView {
   std::size_t staticMarkCount;
   const RadarAirspaceRingView* airspaceRings;
   std::size_t airspaceRingCount;
+  const RadarHighwayView* highways;
+  std::size_t highwayCount;
   bool hasStaticSelection;
   std::size_t selectedStaticIndex;
 
@@ -290,12 +299,15 @@ class ScreenRadar {
   static constexpr std::size_t kMaxProjectedPois = 10;
   static constexpr std::size_t kMaxStaticMarks =
       kMaxProjectedAirports + kMaxProjectedPois;
-  static constexpr std::size_t kMaxAirspaceRingsView = 8;
+  static constexpr std::size_t kMaxAirspaceRingsView = 16;
+  static constexpr std::size_t kMaxHighwaysView = 12;
 
   RadarStaticMark staticMarks_[kMaxStaticMarks];
   std::size_t staticMarkCount_;
   RadarAirspaceRingView airspaceRings_[kMaxAirspaceRingsView];
   std::size_t airspaceRingCount_;
+  RadarHighwayView highways_[kMaxHighwaysView];
+  std::size_t highwayCount_;
   bool hasStaticSelection_;
   std::size_t selectedStaticIndex_;
 

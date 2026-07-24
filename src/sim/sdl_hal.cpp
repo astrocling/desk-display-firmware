@@ -46,17 +46,33 @@ void mouse_read_cb(lv_indev_drv_t* /*drv*/, lv_indev_data_t* data) {
 }
 
 void map_mouse_to_display(int window_x, int window_y) {
-  if (renderer_) {
-    float lx = 0.0f;
-    float ly = 0.0f;
-    SDL_RenderWindowToLogical(renderer_, window_x, window_y, &lx, &ly);
-    mouse_x_ = static_cast<int>(lx);
-    mouse_y_ = static_cast<int>(ly);
-    return;
+  // Map window pixels → LVGL display pixels via the actual window size.
+  // Avoid SDL_RenderWindowToLogical here: with ALLOW_HIGHDPI + logical size +
+  // kZoom it can disagree with LVGL's 360×360 coordinate space on macOS.
+  int ww = 0;
+  int wh = 0;
+  if (window_) {
+    SDL_GetWindowSize(window_, &ww, &wh);
   }
-  // Fallback: divide by window zoom when renderer is unavailable.
-  mouse_x_ = window_x / kZoom;
-  mouse_y_ = window_y / kZoom;
+  if (ww > 0 && wh > 0) {
+    mouse_x_ = window_x * kDispW / ww;
+    mouse_y_ = window_y * kDispH / wh;
+  } else {
+    mouse_x_ = window_x / kZoom;
+    mouse_y_ = window_y / kZoom;
+  }
+  if (mouse_x_ < 0) {
+    mouse_x_ = 0;
+  }
+  if (mouse_y_ < 0) {
+    mouse_y_ = 0;
+  }
+  if (mouse_x_ >= kDispW) {
+    mouse_x_ = kDispW - 1;
+  }
+  if (mouse_y_ >= kDispH) {
+    mouse_y_ = kDispH - 1;
+  }
 }
 
 void map_key(SDL_Keycode key, bool down) {

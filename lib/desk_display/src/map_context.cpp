@@ -7,8 +7,10 @@ namespace desk_display {
 namespace {
 
 constexpr std::size_t kMaxAirports = 40;
-constexpr std::size_t kMaxRings = 16;
+constexpr std::size_t kMaxRings = 24;
 constexpr std::size_t kMaxRingPoints = 64;
+constexpr std::size_t kMaxHighways = 12;
+constexpr std::size_t kMaxHighwayPoints = 80;
 
 void copyStr(char* dest, std::size_t destLen, const char* src) {
   if (destLen == 0) {
@@ -41,6 +43,40 @@ bool parseAirspaceClass(const char* s, AirspaceClass& out) {
   return false;
 }
 
+bool parseLatLonPoints(JsonArrayConst points, float* outLat, float* outLon,
+                       uint8_t maxPoints, uint8_t minPoints, uint8_t& outCount) {
+  outCount = 0;
+  if (points.size() < minPoints) {
+    return false;
+  }
+
+  uint8_t count = 0;
+  for (JsonVariantConst pt : points) {
+    if (count >= maxPoints) {
+      break;
+    }
+    if (!pt.is<JsonArrayConst>()) {
+      return false;
+    }
+    JsonArrayConst coords = pt.as<JsonArrayConst>();
+    if (coords.size() < 2) {
+      return false;
+    }
+    if (coords[0].isNull() || coords[1].isNull()) {
+      return false;
+    }
+    outLat[count] = coords[0].as<float>();
+    outLon[count] = coords[1].as<float>();
+    ++count;
+  }
+
+  if (count < minPoints) {
+    return false;
+  }
+  outCount = count;
+  return true;
+}
+
 bool parseRing(JsonObjectConst ringObj, MapAirspaceRing& out) {
   std::memset(&out, 0, sizeof(out));
 
@@ -60,37 +96,28 @@ bool parseRing(JsonObjectConst ringObj, MapAirspaceRing& out) {
     return false;
   }
 
-  JsonArrayConst points = ringObj["points"].as<JsonArrayConst>();
-  if (points.size() < 3) {
+  return parseLatLonPoints(ringObj["points"].as<JsonArrayConst>(), out.pointsLat,
+                           out.pointsLon, kMaxRingPoints, 3, out.pointCount);
+}
+
+bool parseHighway(JsonObjectConst hwObj, MapHighway& out) {
+  std::memset(&out, 0, sizeof(out));
+
+  if (hwObj["id"].isNull() || !hwObj["id"].is<const char*>()) {
+    return false;
+  }
+  copyStr(out.id, sizeof(out.id), hwObj["id"].as<const char*>());
+
+  if (!hwObj["route"].isNull() && hwObj["route"].is<const char*>()) {
+    copyStr(out.route, sizeof(out.route), hwObj["route"].as<const char*>());
+  }
+
+  if (!hwObj["points"].is<JsonArrayConst>()) {
     return false;
   }
 
-  uint8_t count = 0;
-  for (JsonVariantConst pt : points) {
-    if (count >= kMaxRingPoints) {
-      break;
-    }
-    if (!pt.is<JsonArrayConst>()) {
-      return false;
-    }
-    JsonArrayConst coords = pt.as<JsonArrayConst>();
-    if (coords.size() < 2) {
-      return false;
-    }
-    if (coords[0].isNull() || coords[1].isNull()) {
-      return false;
-    }
-    out.pointsLat[count] = coords[0].as<float>();
-    out.pointsLon[count] = coords[1].as<float>();
-    ++count;
-  }
-
-  if (count < 3) {
-    return false;
-  }
-
-  out.pointCount = count;
-  return true;
+  return parseLatLonPoints(hwObj["points"].as<JsonArrayConst>(), out.pointsLat,
+                           out.pointsLon, kMaxHighwayPoints, 2, out.pointCount);
 }
 
 }  // namespace
@@ -144,6 +171,21 @@ bool parseMapContext(const char* json, MapContext& out) {
       }
       out.rings[out.ringCount] = ring;
       ++out.ringCount;
+    }
+  }
+
+  if (doc["highways"].is<JsonArrayConst>()) {
+    for (JsonObjectConst hwObj : doc["highways"].as<JsonArrayConst>()) {
+      if (out.highwayCount >= kMaxHighways) {
+        break;
+      }
+
+      MapHighway highway{};
+      if (!parseHighway(hwObj, highway)) {
+        continue;
+      }
+      out.highways[out.highwayCount] = highway;
+      ++out.highwayCount;
     }
   }
 

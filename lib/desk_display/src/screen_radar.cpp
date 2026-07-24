@@ -140,6 +140,7 @@ void ScreenRadar::reset() {
   poiCount_ = 0;
   staticMarkCount_ = 0;
   airspaceRingCount_ = 0;
+  highwayCount_ = 0;
   hasStaticSelection_ = false;
   selectedStaticIndex_ = 0;
   sweepAngleDeg_ = 0.0f;
@@ -533,6 +534,8 @@ RadarView ScreenRadar::view() const {
   v.staticMarkCount = staticMarkCount_;
   v.airspaceRings = airspaceRings_;
   v.airspaceRingCount = airspaceRingCount_;
+  v.highways = highways_;
+  v.highwayCount = highwayCount_;
   v.hasStaticSelection = hasStaticSelection_;
   v.selectedStaticIndex = selectedStaticIndex_;
   v.hasSelection = hasSelection_;
@@ -596,6 +599,7 @@ void ScreenRadar::setActiveCenter(double lat, double lon, bool temp) {
 void ScreenRadar::reprojectOverlays() {
   staticMarkCount_ = 0;
   airspaceRingCount_ = 0;
+  highwayCount_ = 0;
 
   if (hasMapContext_) {
     std::size_t airportIndices[40];
@@ -630,9 +634,10 @@ void ScreenRadar::reprojectOverlays() {
                           mark.offsetXMi, mark.offsetYMi);
     }
 
-    RingCandidate ringCands[16];
+    RingCandidate ringCands[24];
     std::size_t ringCandCount = 0;
-    for (std::size_t i = 0; i < mapContext_.ringCount; ++i) {
+    for (std::size_t i = 0; i < mapContext_.ringCount && ringCandCount < 24;
+         ++i) {
       const MapAirspaceRing& ring = mapContext_.rings[i];
       if (!ringIntersectsRange(ring, centerLat_, centerLon_, rangeMiles_)) {
         continue;
@@ -663,6 +668,31 @@ void ScreenRadar::reprojectOverlays() {
       for (uint8_t p = 0; p < ring.pointCount; ++p) {
         aircraftOffsetMiles(centerLat_, centerLon_, ring.pointsLat[p],
                             ring.pointsLon[p], view.offsetXMi[p],
+                            view.offsetYMi[p]);
+      }
+    }
+
+    for (std::size_t i = 0;
+         i < mapContext_.highwayCount && highwayCount_ < kMaxHighwaysView;
+         ++i) {
+      const MapHighway& hw = mapContext_.highways[i];
+      bool inRange = false;
+      for (uint8_t p = 0; p < hw.pointCount; ++p) {
+        const float dist = distanceMiles(centerLat_, centerLon_,
+                                         hw.pointsLat[p], hw.pointsLon[p]);
+        if (dist <= rangeMiles_ + 0.01f) {
+          inRange = true;
+          break;
+        }
+      }
+      if (!inRange) {
+        continue;
+      }
+      RadarHighwayView& view = highways_[highwayCount_++];
+      view.pointCount = hw.pointCount;
+      for (uint8_t p = 0; p < hw.pointCount; ++p) {
+        aircraftOffsetMiles(centerLat_, centerLon_, hw.pointsLat[p],
+                            hw.pointsLon[p], view.offsetXMi[p],
                             view.offsetYMi[p]);
       }
     }

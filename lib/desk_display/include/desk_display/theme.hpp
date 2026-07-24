@@ -11,6 +11,7 @@ constexpr uint32_t kBg = 0x0B0F14;      // near-black background
 constexpr uint32_t kAccent = 0x3D9CF0;  // primary accent (links, focus ring)
 constexpr uint32_t kDim = 0x6B7280;     // secondary / muted text
 constexpr uint32_t kAlert = 0xE85D4C;   // warnings / attention
+constexpr uint32_t kMilitary = 0xC4A35A;  // military / government traffic mark
 
 /** Timezone board row status icons. */
 constexpr uint32_t kStatusWorking = 0x34D399;  // green — work hours

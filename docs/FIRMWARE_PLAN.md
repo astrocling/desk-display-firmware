@@ -166,7 +166,8 @@ Two nested knob modes, consistent across every screen:
 - **Radar map overlays (in progress on `feat/radar-map-overlays`)** — see
   [docs/superpowers/specs/2026-07-24-radar-map-overlays-design.md](superpowers/specs/2026-07-24-radar-map-overlays-design.md):
   towered airports (OurAirports TWR join), config POIs, Class B/C/D rings (D dashed),
-  debounced `GET /api/map/context`. Hydrography underlay deferred (static tiles only).
+  debounced `GET /api/map/context` (airports + Class B/C/D shelves + interstates).
+  Hydrography deferred indefinitely.
 - **Precipitation radar map** — device would render a small raw-pixel image (RGB565
   or indexed palette) provided by the backend; reuses image-handling groundwork when
   hydro/precip tiles ship.

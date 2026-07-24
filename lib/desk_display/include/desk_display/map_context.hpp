@@ -22,11 +22,21 @@ struct MapAirspaceRing {
   uint8_t pointCount;
 };
 
+struct MapHighway {
+  char id[16];
+  char route[12];
+  float pointsLat[80];
+  float pointsLon[80];
+  uint8_t pointCount;
+};
+
 struct MapContext {
   MapAirport airports[40];
   std::size_t airportCount;
-  MapAirspaceRing rings[16];
+  MapAirspaceRing rings[24];
   std::size_t ringCount;
+  MapHighway highways[12];
+  std::size_t highwayCount;
 };
 
 bool parseMapContext(const char* json, MapContext& out);

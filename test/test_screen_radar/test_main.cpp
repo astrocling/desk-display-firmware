@@ -565,6 +565,39 @@ void test_radar_bind_map_context_projects_airport(void) {
   TEST_ASSERT_EQUAL_STRING("KTEST", v.staticMarks[0].label);
 }
 
+void test_radar_bind_map_context_projects_highways_and_shelves(void) {
+  ScreenRadar r;
+  MapContext ctx{};
+  ctx.ringCount = 3;
+  for (std::size_t i = 0; i < 3; ++i) {
+    ctx.rings[i].cls = (i < 2) ? AirspaceClass::D : AirspaceClass::C;
+    std::snprintf(ctx.rings[i].id, sizeof(ctx.rings[i].id), "RING_%zu", i);
+    ctx.rings[i].pointCount = 4;
+    ctx.rings[i].pointsLat[0] = static_cast<float>(kRadarHomeLat + 0.05);
+    ctx.rings[i].pointsLon[0] = static_cast<float>(kRadarHomeLon - 0.05);
+    ctx.rings[i].pointsLat[1] = static_cast<float>(kRadarHomeLat + 0.05);
+    ctx.rings[i].pointsLon[1] = static_cast<float>(kRadarHomeLon + 0.05);
+    ctx.rings[i].pointsLat[2] = static_cast<float>(kRadarHomeLat - 0.05);
+    ctx.rings[i].pointsLon[2] = static_cast<float>(kRadarHomeLon + 0.05);
+    ctx.rings[i].pointsLat[3] = static_cast<float>(kRadarHomeLat - 0.05);
+    ctx.rings[i].pointsLon[3] = static_cast<float>(kRadarHomeLon - 0.05);
+  }
+  ctx.highwayCount = 1;
+  std::snprintf(ctx.highways[0].id, sizeof(ctx.highways[0].id), "I-75");
+  std::snprintf(ctx.highways[0].route, sizeof(ctx.highways[0].route), "I-75");
+  ctx.highways[0].pointCount = 2;
+  ctx.highways[0].pointsLat[0] = static_cast<float>(kRadarHomeLat + 0.02);
+  ctx.highways[0].pointsLon[0] = static_cast<float>(kRadarHomeLon);
+  ctx.highways[0].pointsLat[1] = static_cast<float>(kRadarHomeLat - 0.02);
+  ctx.highways[0].pointsLon[1] = static_cast<float>(kRadarHomeLon);
+
+  r.bindMapContext(ctx);
+  const RadarView v = r.view();
+  TEST_ASSERT_EQUAL(3, v.airspaceRingCount);
+  TEST_ASSERT_EQUAL(1, v.highwayCount);
+  TEST_ASSERT_EQUAL(2, v.highways[0].pointCount);
+}
+
 void test_radar_static_selection_survives_reproject(void) {
   ScreenRadar r;
   MapContext ctx{};
@@ -718,6 +751,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_idle_settle_clears_selection_keeps_range);
   RUN_TEST(test_radar_set_pois_adds_home_mark);
   RUN_TEST(test_radar_bind_map_context_projects_airport);
+  RUN_TEST(test_radar_bind_map_context_projects_highways_and_shelves);
   RUN_TEST(test_radar_static_selection_survives_reproject);
   RUN_TEST(test_radar_static_select_clears_blip_select);
   return UNITY_END();

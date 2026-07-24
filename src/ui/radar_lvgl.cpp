@@ -1,5 +1,6 @@
 #include "radar_lvgl.hpp"
 
+#include "desk_display/aircraft_notable.hpp"
 #include "desk_display/map_context.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/radar_format.hpp"
@@ -9,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 
 namespace desk_ui {
 namespace {
@@ -27,6 +29,7 @@ constexpr lv_opa_t kTagDimOpa = LV_OPA_60;
 constexpr uint32_t kAirspaceColorB = 0x3A6AA8;
 constexpr uint32_t kAirspaceColorC = 0xA83A7A;
 constexpr uint32_t kAirspaceColorD = 0x3A6AA8;
+constexpr uint32_t kHighwayColor = 0x2A323C;
 constexpr lv_coord_t kAirspaceDashWidth = 4;
 constexpr lv_coord_t kAirspaceDashGap = 3;
 constexpr uint32_t kAirportMarkColor = 0xFFFFFF;
@@ -66,6 +69,25 @@ lv_point_t g_trail_points[kTrailSlices][2];
 lv_point_t g_vector_points[kMaxDots][2];
 lv_point_t g_leader_points[kMaxDots][2];
 
+/** Absolute display-pixel hit targets written during the last build_traffic. */
+struct BlipHitTarget {
+  bool valid;
+  bool hasTag;
+  float markX;
+  float markY;
+  float tagX0;
+  float tagY0;
+  float tagX1;
+  float tagY1;
+};
+BlipHitTarget g_hit_targets[kMaxDots];
+
+void clear_hit_targets() {
+  for (int i = 0; i < kMaxDots; ++i) {
+    g_hit_targets[i].valid = false;
+  }
+}
+
 // Animate cache — valid only while the built disc for `g_parent` is intact.
 lv_obj_t* g_parent = nullptr;
 lv_obj_t* g_hdr = nullptr;
@@ -88,12 +110,17 @@ double g_cached_center_lat = 0.0;
 double g_cached_center_lon = 0.0;
 std::size_t g_cached_static_count = 0;
 std::size_t g_cached_ring_count = 0;
+std::size_t g_cached_highway_count = 0;
 bool g_cached_has_static_sel = false;
 std::size_t g_cached_selected_static = 0;
 
-constexpr int kMaxAirspaceSegs = 640;
+constexpr int kMaxAirspaceSegs = 1280;
 lv_point_t g_airspace_seg_pts[kMaxAirspaceSegs][2];
 int g_airspace_seg_used = 0;
+
+constexpr int kMaxHighwaySegs = 960;
+lv_point_t g_highway_seg_pts[kMaxHighwaySegs][2];
+int g_highway_seg_used = 0;
 
 void sweep_endpoint(float angleDeg, lv_coord_t cx, lv_coord_t cy, float r,
                     lv_point_t& out) {
@@ -103,9 +130,10 @@ void sweep_endpoint(float angleDeg, lv_coord_t cx, lv_coord_t cy, float r,
 }
 
 void format_header(char* hdr, std::size_t hdrLen, const desk_display::RadarView& v) {
-  std::snprintf(hdr, hdrLen, "%.0f mi · %zu%s",
+  // ASCII separators only — LVGL Montserrat fonts lack U+00B7 (·).
+  std::snprintf(hdr, hdrLen, "%.0f mi - %zu%s",
                 static_cast<double>(v.rangeMiles), v.blipCount,
-                show_vectors(v.rangeMiles) ? " · vec" : "");
+                show_vectors(v.rangeMiles) ? " - vec" : "");
 }
 
 bool disc_hit_geometry(lv_obj_t* parent, const desk_display::RadarView& v,
@@ -128,6 +156,7 @@ void cache_overlay_state(const desk_display::RadarView& v) {
   g_cached_center_lon = v.centerLon;
   g_cached_static_count = v.staticMarkCount;
   g_cached_ring_count = v.airspaceRingCount;
+  g_cached_highway_count = v.highwayCount;
   g_cached_has_static_sel = v.hasStaticSelection;
   g_cached_selected_static = v.selectedStaticIndex;
 }
@@ -137,6 +166,7 @@ bool overlay_needs_rebuild(const desk_display::RadarView& v) {
          v.centerLon != g_cached_center_lon ||
          v.staticMarkCount != g_cached_static_count ||
          v.airspaceRingCount != g_cached_ring_count ||
+         v.highwayCount != g_cached_highway_count ||
          v.hasStaticSelection != g_cached_has_static_sel ||
          v.selectedStaticIndex != g_cached_selected_static;
 }
@@ -244,6 +274,48 @@ void build_airspace(lv_obj_t* layer, const desk_display::RadarView& v) {
   }
 }
 
+void build_highways(lv_obj_t* layer, const desk_display::RadarView& v) {
+  if (!layer || !v.highways || v.highwayCount == 0) {
+    return;
+  }
+
+  g_highway_seg_used = 0;
+  const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
+  const lv_coord_t cx = g_disc_px / 2;
+  const lv_coord_t cy = g_disc_px / 2;
+
+  for (std::size_t h = 0; h < v.highwayCount; ++h) {
+    const auto& hw = v.highways[h];
+    if (hw.pointCount < 2) {
+      continue;
+    }
+    for (uint8_t i = 0; i + 1 < hw.pointCount; ++i) {
+      if (g_highway_seg_used >= kMaxHighwaySegs) {
+        return;
+      }
+      const lv_coord_t x0 =
+          static_cast<lv_coord_t>(cx + hw.offsetXMi[i] * scale);
+      const lv_coord_t y0 =
+          static_cast<lv_coord_t>(cy - hw.offsetYMi[i] * scale);
+      const lv_coord_t x1 =
+          static_cast<lv_coord_t>(cx + hw.offsetXMi[i + 1] * scale);
+      const lv_coord_t y1 =
+          static_cast<lv_coord_t>(cy - hw.offsetYMi[i + 1] * scale);
+      g_highway_seg_pts[g_highway_seg_used][0] = {x0, y0};
+      g_highway_seg_pts[g_highway_seg_used][1] = {x1, y1};
+      lv_obj_t* line = lv_line_create(layer);
+      lv_obj_set_pos(line, 0, 0);
+      lv_line_set_points(line, g_highway_seg_pts[g_highway_seg_used], 2);
+      lv_obj_set_style_line_width(line, 1, 0);
+      lv_obj_set_style_line_color(line, rgb(kHighwayColor), 0);
+      lv_obj_set_style_line_rounded(line, false, 0);
+      lv_obj_clear_flag(line, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
+      ++g_highway_seg_used;
+    }
+  }
+}
+
 void build_static_marks(lv_obj_t* layer, const desk_display::RadarView& v) {
   if (!layer || !v.staticMarks || v.staticMarkCount == 0) {
     return;
@@ -282,17 +354,24 @@ void build_static_marks(lv_obj_t* layer, const desk_display::RadarView& v) {
       lv_obj_align(glyph, LV_ALIGN_CENTER, x, y);
     }
 
-    if (selected && mark.label[0] != '\0') {
+    // Airports: always show a dim ICAO/code; selected bumps contrast.
+    // POIs: label only when selected (names are longer / less chart-like).
+    const bool showLabel =
+        mark.label[0] != '\0' &&
+        (selected || mark.kind == desk_display::RadarStaticMark::Kind::Airport);
+    if (showLabel) {
       lv_obj_t* tag = lv_label_create(layer);
       lv_label_set_text(tag, mark.label);
       lv_obj_set_style_text_font(tag, &lv_font_montserrat_10, 0);
       lv_obj_set_style_text_color(tag, rgb(kAirportMarkColor), 0);
-      lv_obj_set_pos(tag, bx + 10, by - 14);
+      lv_obj_set_style_text_opa(tag, selected ? LV_OPA_COVER : LV_OPA_50, 0);
+      lv_obj_set_pos(tag, bx + 8, by - 12);
     }
   }
 }
 
 void build_static_overlay(lv_obj_t* layer, const desk_display::RadarView& v) {
+  build_highways(layer, v);
   build_airspace(layer, v);
   build_static_marks(layer, v);
   cache_overlay_state(v);
@@ -445,6 +524,14 @@ void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
  * selected gets full-contrast 3-line tag.
  */
 void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
+  clear_hit_targets();
+
+  lv_area_t layerArea{};
+  lv_obj_update_layout(layer);
+  lv_obj_get_coords(layer, &layerArea);
+  const float originX = static_cast<float>(layerArea.x1);
+  const float originY = static_cast<float>(layerArea.y1);
+
   const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
   const bool vectors = show_vectors(v.rangeMiles);
   const std::size_t count =
@@ -463,7 +550,31 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
     const lv_coord_t y = static_cast<lv_coord_t>(-b.offsetYMi * scale);
     const lv_coord_t bx = cx + x;
     const lv_coord_t by = cy + y;
-    const uint32_t markColor = selected ? kSelectedColor : kDotColor;
+    uint32_t markColor = kDotColor;
+    if (selected) {
+      markColor = kSelectedColor;
+    } else {
+      switch (b.notable) {
+        case desk_display::AircraftNotable::Emergency:
+          markColor = desk_display::theme::kAlert;
+          break;
+        case desk_display::AircraftNotable::Military:
+          markColor = desk_display::theme::kMilitary;
+          break;
+        case desk_display::AircraftNotable::Interesting:
+          markColor = desk_display::theme::kAccent;
+          break;
+        case desk_display::AircraftNotable::None:
+        default:
+          break;
+      }
+    }
+
+    BlipHitTarget& hit = g_hit_targets[i];
+    hit.valid = true;
+    hit.markX = originX + static_cast<float>(bx);
+    hit.markY = originY + static_cast<float>(by);
+    hit.hasTag = false;
 
     if (vectors) {
       lv_obj_t* star = lv_label_create(layer);
@@ -500,7 +611,7 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
       }
 
       char tagLine2[24];
-      char tagLine3[24];
+      char tagLine3[28];
       tagLine2[0] = '\0';
       tagLine3[0] = '\0';
       const auto style = selected ? desk_display::RadarTagStyle::Full
@@ -509,8 +620,37 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
                                         style);
       if (selected) {
         desk_display::formatRadarTagLine3(tagLine3, sizeof(tagLine3),
-                                          b.aircraft.type, b.aircraft.squawk);
+                                          b.aircraft.type, b.aircraft.squawk,
+                                          b.notable);
       }
+
+      // Mirror draw_blip_tag placement for hit boxes.
+      constexpr lv_coord_t kLeaderLen = 18;
+      const lv_coord_t kTagMargin = selected ? 48 : 36;
+      const float tdx = static_cast<float>(cx - bx);
+      const float tdy = static_cast<float>(cy - by);
+      const float tdist = std::sqrt(tdx * tdx + tdy * tdy);
+      lv_coord_t leaderDx = 16;
+      lv_coord_t leaderDy = -16;
+      if (tdist > 1.0f) {
+        const bool nearRim =
+            bx < kTagMargin || by < kTagMargin ||
+            bx > g_disc_px - kTagMargin || by > g_disc_px - kTagMargin;
+        if (nearRim) {
+          leaderDx = static_cast<lv_coord_t>((tdx / tdist) * kLeaderLen);
+          leaderDy = static_cast<lv_coord_t>((tdy / tdist) * kLeaderLen);
+        }
+      }
+      const lv_coord_t tagX = bx + leaderDx;
+      const lv_coord_t tagY = by + leaderDy;
+      const lv_coord_t line1Y = tagY - 12;
+      const lv_coord_t line3Y = selected ? tagY + 12 : tagY;
+      hit.hasTag = true;
+      hit.tagX0 = originX + static_cast<float>(tagX);
+      hit.tagY0 = originY + static_cast<float>(line1Y);
+      hit.tagX1 = hit.tagX0 + 72.0f;
+      hit.tagY1 = originY + static_cast<float>(line3Y + 12);
+
       draw_blip_tag(layer, i, b.aircraft.callsign, tagLine2, tagLine3, markColor,
                     selected, bx, by);
     } else {
@@ -521,9 +661,15 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
       const lv_opa_t opa = static_cast<lv_opa_t>(
           clampf(alpha * 255.0f, selected ? 255.0f : 20.0f, 255.0f));
 
+      lv_coord_t dotPx = kDotPx;
+      if (selected) {
+        dotPx = kDotPx + 2;
+      } else if (b.notable == desk_display::AircraftNotable::Emergency) {
+        dotPx = kDotPx + 2;
+      }
+
       lv_obj_t* dot = lv_obj_create(layer);
-      lv_obj_set_size(dot, selected ? kDotPx + 2 : kDotPx,
-                      selected ? kDotPx + 2 : kDotPx);
+      lv_obj_set_size(dot, dotPx, dotPx);
       lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
       lv_obj_set_style_bg_color(dot, rgb(markColor), 0);
       lv_obj_set_style_bg_opa(dot, opa, 0);
@@ -547,14 +693,17 @@ void clear_animate_cache() {
   g_built = false;
   g_disc_px = 0;
   g_plot_radius_px = 0.0f;
+  clear_hit_targets();
   g_cached_range = -1.0f;
   g_cached_center_lat = 0.0;
   g_cached_center_lon = 0.0;
   g_cached_static_count = 0;
   g_cached_ring_count = 0;
+  g_cached_highway_count = 0;
   g_cached_has_static_sel = false;
   g_cached_selected_static = 0;
   g_airspace_seg_used = 0;
+  g_highway_seg_used = 0;
   for (int i = 0; i < kTrailSlices; ++i) {
     g_trail_rays[i] = nullptr;
   }
@@ -603,50 +752,60 @@ bool radar_lvgl_hit_static(lv_obj_t* parent, const desk_display::RadarView& v,
 
 bool radar_lvgl_hit_blip(lv_obj_t* parent, const desk_display::RadarView& v,
                          lv_coord_t absX, lv_coord_t absY, std::size_t* outIndex) {
-  if (!outIndex || !parent || parent != g_parent || !g_built || !g_disc ||
-      g_disc_px <= 0 || g_plot_radius_px <= 0.0f || !v.blips) {
+  if (!outIndex || !parent || parent != g_parent || !g_built || !v.blips) {
     return false;
   }
+  (void)v;
 
-  // Match drawn geometry: blip positions are relative to the live disc object.
-  lv_area_t discArea{};
-  lv_obj_get_coords(g_disc, &discArea);
-  const float cx = static_cast<float>(discArea.x1) + static_cast<float>(g_disc_px) / 2.0f;
-  const float cy = static_cast<float>(discArea.y1) + static_cast<float>(g_disc_px) / 2.0f;
-  const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
-  const float rx = static_cast<float>(absX) - cx;
-  const float ry = static_cast<float>(absY) - cy;
+  const float px = static_cast<float>(absX);
+  const float py = static_cast<float>(absY);
 
-  // Large enough to cover the star/dot and the ATC tag offset from the blip.
-  constexpr float kHitRadiusPx = 52.0f;
-  const float hitR2 = kHitRadiusPx * kHitRadiusPx;
+  constexpr float kMarkR = 20.0f;
+  const float markR2 = kMarkR * kMarkR;
 
-  const std::size_t count =
-      v.blipCount < static_cast<std::size_t>(kMaxDots) ? v.blipCount : kMaxDots;
-  std::size_t nearest = 0;
-  float nearestDistSq = -1.0f;
-  for (std::size_t i = 0; i < count; ++i) {
-    const auto& b = v.blips[i];
-    const bool visible =
-        b.litAgeMs < desk_display::kRadarBlipFadeMs ||
-        (v.hasSelection && v.selectedIndex == i);
-    if (!visible) {
+  std::size_t bestTag = 0;
+  float bestTagDistSq = -1.0f;
+  std::size_t bestMark = 0;
+  float bestMarkDistSq = -1.0f;
+
+  for (int i = 0; i < kMaxDots; ++i) {
+    const BlipHitTarget& hit = g_hit_targets[i];
+    if (!hit.valid) {
       continue;
     }
-    const float dx = b.offsetXMi * scale - rx;
-    const float dy = -b.offsetYMi * scale - ry;
-    const float distSq = dx * dx + dy * dy;
-    if (nearestDistSq < 0.0f || distSq < nearestDistSq) {
-      nearestDistSq = distSq;
-      nearest = i;
+
+    if (hit.hasTag && px >= hit.tagX0 && px < hit.tagX1 && py >= hit.tagY0 &&
+        py < hit.tagY1) {
+      const float tcx = (hit.tagX0 + hit.tagX1) * 0.5f;
+      const float tcy = (hit.tagY0 + hit.tagY1) * 0.5f;
+      const float tdx = tcx - px;
+      const float tdy = tcy - py;
+      const float tagDistSq = tdx * tdx + tdy * tdy;
+      if (bestTagDistSq < 0.0f || tagDistSq < bestTagDistSq) {
+        bestTagDistSq = tagDistSq;
+        bestTag = static_cast<std::size_t>(i);
+      }
+    }
+
+    const float mdx = hit.markX - px;
+    const float mdy = hit.markY - py;
+    const float markDistSq = mdx * mdx + mdy * mdy;
+    if (markDistSq <= markR2 &&
+        (bestMarkDistSq < 0.0f || markDistSq < bestMarkDistSq)) {
+      bestMarkDistSq = markDistSq;
+      bestMark = static_cast<std::size_t>(i);
     }
   }
 
-  if (nearestDistSq < 0.0f || nearestDistSq > hitR2) {
-    return false;
+  if (bestTagDistSq >= 0.0f) {
+    *outIndex = bestTag;
+    return true;
   }
-  *outIndex = nearest;
-  return true;
+  if (bestMarkDistSq >= 0.0f) {
+    *outIndex = bestMark;
+    return true;
+  }
+  return false;
 }
 
 bool radar_lvgl_animate_classic(lv_obj_t* parent,

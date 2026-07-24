@@ -155,9 +155,13 @@ void test_parse_map_context_dayton(void) {
   TEST_ASSERT_TRUE(parseMapContext(g_buf, ctx));
   TEST_ASSERT_EQUAL(2, ctx.airportCount);
   TEST_ASSERT_EQUAL_STRING("KDAY", ctx.airports[0].icao);
-  TEST_ASSERT_EQUAL(1, ctx.ringCount);
+  TEST_ASSERT_EQUAL(3, ctx.ringCount);
   TEST_ASSERT_TRUE(ctx.rings[0].cls == AirspaceClass::D);
   TEST_ASSERT_TRUE(ctx.rings[0].pointCount >= 4);
+  TEST_ASSERT_EQUAL_STRING("KDAY_D_0", ctx.rings[0].id);
+  TEST_ASSERT_EQUAL(2, ctx.highwayCount);
+  TEST_ASSERT_EQUAL_STRING("I-75", ctx.highways[0].route);
+  TEST_ASSERT_TRUE(ctx.highways[0].pointCount >= 2);
 }
 
 void test_parse_map_context_rejects_bad_class(void) {

@@ -21,7 +21,8 @@
 - Paint order: airspace → airports/POIs → aircraft → sweep/HUD
 - `desk_display` must not depend on LVGL
 - POIs are on-device config only (zero backend)
-- Hydrography deferred — do not implement in this plan
+- Hydrography deferred — replaced by interstate polylines in
+  [2026-07-24-airspace-interstates.md](2026-07-24-airspace-interstates.md)
 
 ## File map
 
