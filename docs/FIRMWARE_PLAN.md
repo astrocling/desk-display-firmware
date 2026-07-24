@@ -77,7 +77,7 @@ Two nested knob modes, consistent across every screen:
   screen below); knob click = back out to carousel
 - **Touch, consistent everywhere:** tap = select/drill into detail; double-tap or
   long-press = reset to the default/live state for that screen
-- **Idle timeout:** falls back to the Clock screen (home screen) after inactivity
+- **Idle timeout (60s):** from **Carousel**, enter **Focused Clock** (home); from **Focused**, **stay** on the current screen and settle ephemeral UI (scrub, selection, detail overlays) — do not force Clock
 
 ---
 

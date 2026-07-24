@@ -20,7 +20,11 @@ pio run -e sim -t upload
 
 Click the sim window so it has keyboard focus (macOS often leaves focus on the terminal when launched via `pio`).
 
-Boots in **Focused Clock**. Enter/Space exits to carousel; then Left/Right cycle screens while showing each screen’s normal view (same as Focused). Enter/Space again focuses the highlighted screen so rotate/tap act in-app. On the clock face itself, rotate/tap do nothing visible.
+Boots in **Focused Clock** (full-bleed, no shell chrome). Enter/Space backs out to **Carousel**: title + page dots + a live inset preview of the highlighted screen (preview taps are ignored). Left/Right cycle the highlight and preview. Enter/Space again focuses the highlighted screen full-bleed so rotate/tap act in-app. On the clock face itself, rotate/tap do nothing visible.
+
+**Idle:** Carousel idle → Focused Clock. Focused idle → stay on the current app and settle (e.g. clear radar selection, snap weather scrub) without jumping back to Clock.
+
+The old persistent `Carousel · Screen` / `Focused · Screen` debug label is removed; Carousel frame chrome replaces it in browse mode.
 
 | Key | Maps to |
 |-----|---------|

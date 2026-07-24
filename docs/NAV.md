@@ -8,8 +8,10 @@ Pure C++ app-shell navigation (no LVGL / no Dial hardware required). Source:
 
 | Mode | Meaning |
 |------|---------|
-| **Carousel** | Browse screens; highlight moves with the encoder |
-| **Focused** | Inside one screen; rotate is reserved for that screen’s actions |
+| **Carousel** | Browse screens; shell shows **title + page dots + live inset preview** of the highlighted screen (preview is non-interactive) |
+| **Focused** | Inside one screen; **full-bleed** content with **no shell chrome**; rotate/tap are screen-owned |
+
+Boot / `reset()` starts in **Focused Clock**.
 
 ## Input mapping
 
@@ -18,15 +20,30 @@ The encoder has **no push button**. Shell events:
 | Event | Shell behavior |
 |-------|----------------|
 | `Rotate(delta)` | Carousel: cycle highlight. Focused: idle reset only (screen owns rotate). |
-| `CenterTap` | Plan’s “knob click”: Carousel → enter Focused on highlight; Focused → back to Carousel |
+| `CenterTap` | Plan’s “knob click” (unchanged): Carousel → enter Focused on highlight; Focused → back to Carousel |
 | `Tap` / `DoubleTap` / `LongPress` | Reset idle timer (detail actions are screen-owned) |
 
 ## Idle / home
 
-- Timeout: `kIdleTimeoutMs` (60s), driven by `on_tick(elapsed_ms)` or cleared with `idle_reset()` / any input.
-- **Idle home choice:** **Focused on Clock** (not Carousel highlighting Clock). Matches the firmware plan’s “falls back to the Clock screen (home)” — the user sees the clock face.
+- Timeout: `kIdleTimeoutMs` (60s), driven by `on_tick(elapsed_ms)` (returns `IdleEvent`) or cleared with `idle_reset()` / any input.
+- Focused Clock is already home — idle does not re-fire there.
 
-Boot / `reset()` also starts in **Focused Clock**.
+| Mode at timeout | Nav outcome |
+|-----------------|-------------|
+| **Carousel** | `IdleEvent::HomeToClock` → **Focused Clock** (home) |
+| **Focused** | `IdleEvent::SettleFocused` → **stay** on current screen; shell calls each screen’s `onIdleSettle()` to clear ephemeral UI (scrub, selection, detail overlays) while keeping intentional settings (e.g. radar range) |
+
+## Carousel shell (sim / LVGL)
+
+In Carousel only, the shell owns a browse frame around a circular **preview host**:
+
+| Element | Content |
+|---------|---------|
+| Title (top) | Highlighted screen name (`CLOCK`, `WEATHER`, `RADAR`, …) |
+| Dots (bottom) | One per screen in carousel order; filled dot = highlight |
+| Preview (inset) | Live render of the highlighted screen; **non-interactive** (rotate cycles highlight; center-tap focuses) |
+
+Focused mode hides the carousel frame and mounts the same screen renderers full-bleed on `focused_host_` (360×360).
 
 ## Screens
 
