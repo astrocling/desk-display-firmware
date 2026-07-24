@@ -32,7 +32,7 @@ void ScreenClock::reset() {
   hour_ = 0;
   minute_ = 0;
   second_ = 0;
-  timezoneBoardHint_ = true;
+  timezoneBoardHint_ = false;
   refreshDateText();
 }
 

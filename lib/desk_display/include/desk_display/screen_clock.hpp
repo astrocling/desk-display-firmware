@@ -16,7 +16,7 @@ struct ClockView {
   int minute;  // 0–59
   int second;  // 0–59
   char dateText[kClockDateLen];  // e.g. "Thu, Jul 23"
-  bool timezoneBoardHint;        // timezone board is available from home
+  bool timezoneBoardHint;        // optional legacy cue; off by default (Carousel browses)
 };
 
 /**
@@ -38,7 +38,7 @@ class ScreenClock {
    */
   void setUnixUtc(std::int64_t unixSeconds);
 
-  /** Whether to show the small hint that the timezone board exists. */
+  /** Optional cue that a timezone board exists. Off by default — Carousel browses. */
   void setTimezoneBoardHint(bool visible);
 
   ClockView view() const;

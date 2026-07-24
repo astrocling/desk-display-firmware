@@ -9,11 +9,11 @@ using namespace desk_display;
 
 void test_clock_default_hint_and_epoch_date(void) {
   ScreenClock clock;
-  TEST_ASSERT_TRUE(clock.timezoneBoardHint());
+  TEST_ASSERT_FALSE(clock.timezoneBoardHint());
   TEST_ASSERT_EQUAL_STRING("Thu, Jan 1", clock.dateText());
 
   const ClockView v = clock.view();
-  TEST_ASSERT_TRUE(v.timezoneBoardHint);
+  TEST_ASSERT_FALSE(v.timezoneBoardHint);
   TEST_ASSERT_EQUAL_STRING("Thu, Jan 1", v.dateText);
   TEST_ASSERT_EQUAL(1970, v.year);
   TEST_ASSERT_EQUAL(1, v.month);

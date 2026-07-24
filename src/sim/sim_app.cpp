@@ -136,7 +136,8 @@ void SimApp::load_fixtures() {
     radar_.bind(ac);
   }
 
-  clock_.setTimezoneBoardHint(true);
+  // Carousel is the browse path to Timezones — no "→ Timezones" chrome on Clock.
+  clock_.setTimezoneBoardHint(false);
   std::fprintf(stdout, "Fixtures loaded (weather/tz/scores/adsb as available).\n");
 }
 
