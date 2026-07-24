@@ -597,11 +597,6 @@ void ScreenRadar::reprojectOverlays() {
   staticMarkCount_ = 0;
   airspaceRingCount_ = 0;
 
-  if (hasStaticSelection_ &&
-      selectedStaticIndex_ >= staticMarkCount_) {
-    clearStaticSelection();
-  }
-
   if (hasMapContext_) {
     std::size_t airportIndices[40];
     float airportDistances[40];

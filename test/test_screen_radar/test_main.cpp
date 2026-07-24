@@ -439,6 +439,28 @@ void test_radar_bind_map_context_projects_airport(void) {
   TEST_ASSERT_EQUAL_STRING("KTEST", v.staticMarks[0].label);
 }
 
+void test_radar_static_selection_survives_reproject(void) {
+  ScreenRadar r;
+  MapContext ctx{};
+  ctx.airportCount = 1;
+  std::snprintf(ctx.airports[0].icao, sizeof(ctx.airports[0].icao), "KTEST");
+  ctx.airports[0].lat = kRadarHomeLat;
+  ctx.airports[0].lon =
+      kRadarHomeLon + 10.0 / (69.0 * std::cos(kRadarHomeLat * 0.017453292519943295));
+  r.bindMapContext(ctx);
+
+  TEST_ASSERT_TRUE(r.selectStaticMark(0));
+  TEST_ASSERT_TRUE(r.view().hasStaticSelection);
+  TEST_ASSERT_EQUAL(0, r.view().selectedStaticIndex);
+
+  r.onRotate(1);
+
+  const RadarView v = r.view();
+  TEST_ASSERT_TRUE(v.hasStaticSelection);
+  TEST_ASSERT_EQUAL(0, v.selectedStaticIndex);
+  TEST_ASSERT_TRUE(v.staticMarkCount >= 1);
+}
+
 void test_radar_static_select_clears_blip_select(void) {
   ScreenRadar r;
   r.bind(loadAdsbFixture());
@@ -565,6 +587,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_adsb_url_from_radar_home);
   RUN_TEST(test_idle_settle_clears_selection_keeps_range);
   RUN_TEST(test_radar_bind_map_context_projects_airport);
+  RUN_TEST(test_radar_static_selection_survives_reproject);
   RUN_TEST(test_radar_static_select_clears_blip_select);
   return UNITY_END();
 }
