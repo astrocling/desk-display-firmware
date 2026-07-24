@@ -20,8 +20,14 @@ constexpr float kRadarPlotRadiusInsetPx = 10.0f;
  * content width/height, inset by `kRadarDiscInsetPx` on each side so the
  * outer ring stays inside a round clip (display bezel or carousel preview).
  * Clamped to `kRadarDiscMinPx` for degenerate parents.
+ *
+ * Forces a layout pass on `parent` first: callers may invoke this right
+ * after creating/resizing `parent` (e.g. `lv_pct(100)` on a freshly created
+ * object), before LVGL has resolved percentage sizes, which would otherwise
+ * measure a 0x0 content box and permanently clamp to `kRadarDiscMinPx`.
  */
 inline lv_coord_t radar_disc_px_for_parent(lv_obj_t* parent) {
+  lv_obj_update_layout(parent);
   const lv_coord_t cw = lv_obj_get_content_width(parent);
   const lv_coord_t ch = lv_obj_get_content_height(parent);
   const lv_coord_t avail = cw < ch ? cw : ch;
