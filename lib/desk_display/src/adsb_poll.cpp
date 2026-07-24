@@ -42,37 +42,54 @@ void AdsbPoller::onTick(uint32_t elapsedMs) {
   }
 
   pollMs_ += elapsedMs;
-  if (pollMs_ < kAdsbPollIntervalMs) {
+
+  // Prefetch before the interval boundary so async transports can finish by
+  // the time the Classic sweep wraps through north (aligned ~10s cadence).
+  constexpr uint32_t kPrefetchAtMs =
+      kAdsbPollIntervalMs > kAdsbPrefetchLeadMs
+          ? kAdsbPollIntervalMs - kAdsbPrefetchLeadMs
+          : 0;
+  if (pollMs_ < kPrefetchAtMs) {
     return;
   }
-  pollMs_ -= kAdsbPollIntervalMs;
-  pollOnce();
+
+  if (tryPollOnce()) {
+    pollMs_ = 0;
+    return;
+  }
+
+  // In-flight or failed attempt: keep retrying until the wait budget expires,
+  // then start a fresh interval (keeps last-good traffic on screen).
+  if (pollMs_ >= kPrefetchAtMs + kAdsbFetchMaxWaitMs) {
+    pollMs_ = 0;
+  }
 }
 
-void AdsbPoller::pollOnce() {
+bool AdsbPoller::tryPollOnce() {
   char url[160];
   if (!buildAdsbLolUrl(url, sizeof(url), centerLat_, centerLon_,
                        rangeStatuteMi_)) {
-    return;
+    return false;
   }
 
   std::size_t bodyLen = 0;
   if (!httpGet_(url, body_, sizeof(body_), bodyLen, httpUser_)) {
-    return;
+    return false;
   }
   if (bodyLen >= sizeof(body_)) {
-    return;
+    return false;
   }
   body_[bodyLen] = '\0';
 
   AircraftList parsed{};
   if (!parseAdsb(body_, parsed)) {
-    return;
+    return false;
   }
 
   lastGood_ = parsed;
   hasLastGood_ = true;
   hasPending_ = true;
+  return true;
 }
 
 bool AdsbPoller::takeAircraft(AircraftList& out) {

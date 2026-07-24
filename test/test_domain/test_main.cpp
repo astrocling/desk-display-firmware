@@ -191,6 +191,74 @@ void test_adsb_poller_only_when_active(void) {
   TEST_ASSERT_FALSE(poll.takeAircraft(list));
 }
 
+void test_adsb_poller_prefetches_before_interval(void) {
+  g_http_calls = 0;
+  AdsbPoller poll;
+  poll.setHttpGet(fake_http, nullptr);
+  poll.setCenter(40.03353, -84.19588, 25.0f);
+  poll.setActive(true);
+
+  const uint32_t prefetchAt =
+      kAdsbPollIntervalMs > kAdsbPrefetchLeadMs
+          ? kAdsbPollIntervalMs - kAdsbPrefetchLeadMs
+          : 0;
+  if (prefetchAt > 0) {
+    poll.onTick(prefetchAt - 1);
+    TEST_ASSERT_EQUAL(0, g_http_calls);
+    poll.onTick(1);
+  } else {
+    poll.onTick(1);
+  }
+  TEST_ASSERT_EQUAL(1, g_http_calls);
+  AircraftList list{};
+  TEST_ASSERT_TRUE(poll.takeAircraft(list));
+}
+
+static int g_http_fail_then_ok = 0;
+
+bool fake_http_pending_then_ok(const char* /*url*/, char* body, std::size_t cap,
+                               std::size_t& len, void* /*user*/) {
+  ++g_http_calls;
+  if (g_http_fail_then_ok > 0) {
+    --g_http_fail_then_ok;
+    return false;  // async in-flight
+  }
+  const char* json =
+      "{\"ac\":[{\"hex\":\"abc\",\"flight\":\"PEND1\",\"lat\":40.0,\"lon\":-84.0,"
+      "\"alt_baro\":1000,\"gs\":100,\"track\":90}]}";
+  len = std::strlen(json);
+  if (len + 1 > cap) return false;
+  std::memcpy(body, json, len + 1);
+  return true;
+}
+
+void test_adsb_poller_retries_while_http_pending(void) {
+  g_http_calls = 0;
+  g_http_fail_then_ok = 2;
+  AdsbPoller poll;
+  poll.setHttpGet(fake_http_pending_then_ok, nullptr);
+  poll.setCenter(40.03353, -84.19588, 25.0f);
+  poll.setActive(true);
+
+  const uint32_t prefetchAt =
+      kAdsbPollIntervalMs > kAdsbPrefetchLeadMs
+          ? kAdsbPollIntervalMs - kAdsbPrefetchLeadMs
+          : 0;
+  poll.onTick(prefetchAt + 1);
+  TEST_ASSERT_EQUAL(1, g_http_calls);
+  AircraftList list{};
+  TEST_ASSERT_FALSE(poll.takeAircraft(list));
+
+  poll.onTick(16);
+  TEST_ASSERT_EQUAL(2, g_http_calls);
+  TEST_ASSERT_FALSE(poll.takeAircraft(list));
+
+  poll.onTick(16);
+  TEST_ASSERT_EQUAL(3, g_http_calls);
+  TEST_ASSERT_TRUE(poll.takeAircraft(list));
+  TEST_ASSERT_EQUAL(1, list.count);
+}
+
 void test_radar_offset_and_distance(void) {
   float x = 0.0f;
   float y = 0.0f;
@@ -231,5 +299,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_offset_and_distance);
   RUN_TEST(test_statute_to_nm_and_url);
   RUN_TEST(test_adsb_poller_only_when_active);
+  RUN_TEST(test_adsb_poller_prefetches_before_interval);
+  RUN_TEST(test_adsb_poller_retries_while_http_pending);
   return UNITY_END();
 }

@@ -7,8 +7,26 @@
 
 namespace desk_display {
 
+/** Cadence between successful binds while Radar is the active screen. */
 constexpr uint32_t kAdsbPollIntervalMs = 10000;
 
+/**
+ * Start the HTTP GET this many ms before the interval elapses so a typical
+ * response lands before the Classic sweep wraps through north. The transport
+ * may return false while a request is still in flight (non-blocking / async);
+ * the poller retries each tick until success or `kAdsbFetchMaxWaitMs`.
+ */
+constexpr uint32_t kAdsbPrefetchLeadMs = 2500;
+
+/** Abandon an in-flight / failing attempt after this many ms past prefetch start. */
+constexpr uint32_t kAdsbFetchMaxWaitMs = 8000;
+
+/**
+ * Blocking or non-blocking HTTPS GET.
+ * - true: `body`/`bodyLen` hold a complete response
+ * - false: not ready yet (async in flight) or hard failure — poller will retry
+ *   until `kAdsbFetchMaxWaitMs`, then wait for the next interval
+ */
 using AdsbHttpGetFn = bool (*)(const char* url, char* body, std::size_t bodyCap,
                                std::size_t& bodyLen, void* user);
 
@@ -26,7 +44,8 @@ class AdsbPoller {
   bool hasLastGood() const;
 
  private:
-  void pollOnce();
+  /** Returns true when a new list was parsed into lastGood_/hasPending_. */
+  bool tryPollOnce();
 
   AdsbHttpGetFn httpGet_{nullptr};
   void* httpUser_{nullptr};

@@ -158,10 +158,28 @@ void build_sweep(lv_obj_t* disc, float sweepAngleDeg) {
 
 void draw_selected_tag(lv_obj_t* layer, const desk_display::RadarView& v,
                        lv_coord_t bx, lv_coord_t by) {
-  constexpr lv_coord_t kLeaderDx = 16;
-  constexpr lv_coord_t kLeaderDy = -16;
-  const lv_coord_t tagX = bx + kLeaderDx;
-  const lv_coord_t tagY = by + kLeaderDy;
+  // Place the tag toward disc center when the blip is near the rim so the
+  // round clip doesn't swallow callsign / alt lines.
+  constexpr lv_coord_t kLeaderLen = 18;
+  constexpr lv_coord_t kTagMargin = 36;
+  const lv_coord_t cx = g_disc_px / 2;
+  const lv_coord_t cy = g_disc_px / 2;
+  const float dx = static_cast<float>(cx - bx);
+  const float dy = static_cast<float>(cy - by);
+  const float dist = std::sqrt(dx * dx + dy * dy);
+  lv_coord_t leaderDx = 16;
+  lv_coord_t leaderDy = -16;
+  if (dist > 1.0f) {
+    const bool nearRim =
+        bx < kTagMargin || by < kTagMargin ||
+        bx > g_disc_px - kTagMargin || by > g_disc_px - kTagMargin;
+    if (nearRim) {
+      leaderDx = static_cast<lv_coord_t>((dx / dist) * kLeaderLen);
+      leaderDy = static_cast<lv_coord_t>((dy / dist) * kLeaderLen);
+    }
+  }
+  const lv_coord_t tagX = bx + leaderDx;
+  const lv_coord_t tagY = by + leaderDy;
 
   g_leader_points[0] = {bx, by};
   g_leader_points[1] = {tagX, tagY};

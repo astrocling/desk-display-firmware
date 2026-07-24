@@ -35,8 +35,11 @@ constexpr float kRadarSweepDegPerSec =
 /** Sweep illuminates a blip for this many degrees after its bearing. */
 constexpr float kRadarSweepGateDeg = 5.0f;
 
-/** Phosphor fade after a paint (ms). */
-constexpr uint32_t kRadarBlipFadeMs = 9000;
+/**
+ * Phosphor fade after a paint (ms). Slightly longer than one sweep so a
+ * blip is still faintly visible when the beam returns, then gets repainted.
+ */
+constexpr uint32_t kRadarBlipFadeMs = 11000;
 
 enum class RadarMode : uint8_t {
   ClassicSweep = 0,

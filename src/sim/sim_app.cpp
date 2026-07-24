@@ -595,17 +595,27 @@ void SimApp::on_tap_focused(int16_t x, int16_t y) {
       // matches whatever radar_lvgl_build sized the live disc to for body_.
       constexpr float kDiscCenterX = static_cast<float>(kDispW) / 2.0f;
       constexpr float kDiscCenterY = static_cast<float>(kDispH) / 2.0f;
-      constexpr float kHitRadiusPx = 24.0f;
+      // Generous so small dots / star glyphs are easy to tap on the sim.
+      constexpr float kHitRadiusPx = 36.0f;
       const lv_coord_t discPx = desk_ui::radar_disc_px_for_parent(body_);
       const float plotRadiusPx = desk_ui::radar_plot_radius_px(discPx);
       const float scale = desk_ui::radar_blip_scale(rv.rangeMiles, plotRadiusPx);
       const float rx = static_cast<float>(x) - kDiscCenterX;
       const float ry = static_cast<float>(y) - kDiscCenterY;
+      const float hitR2 = kHitRadiusPx * kHitRadiusPx;
 
       std::size_t nearest = 0;
       float nearestDistSq = -1.0f;
       for (std::size_t i = 0; i < rv.blipCount; ++i) {
         const auto& b = rv.blips[i];
+        // Only what the user can see: phosphor-live blips, or the current
+        // selection (which stays drawn after fade).
+        const bool visible =
+            b.litAgeMs < desk_display::kRadarBlipFadeMs ||
+            (rv.hasSelection && rv.selectedIndex == i);
+        if (!visible) {
+          continue;
+        }
         const float dx = b.offsetXMi * scale - rx;
         const float dy = -b.offsetYMi * scale - ry;
         const float distSq = dx * dx + dy * dy;
@@ -615,8 +625,7 @@ void SimApp::on_tap_focused(int16_t x, int16_t y) {
         }
       }
 
-      if (rv.blipCount > 0 && nearestDistSq >= 0.0f &&
-          nearestDistSq <= kHitRadiusPx * kHitRadiusPx) {
+      if (nearestDistSq >= 0.0f && nearestDistSq <= hitR2) {
         if (radar_.hasSelection() && radar_.selectedIndex() == nearest) {
           radar_.clearSelection();
         } else {

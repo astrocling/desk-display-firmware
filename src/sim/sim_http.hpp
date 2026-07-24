@@ -11,7 +11,13 @@ namespace sim {
  */
 bool simHttpGet(const char* url, char* body, std::size_t bodyCap, std::size_t& bodyLen);
 
-/** Trampoline matching `desk_display::AdsbHttpGetFn` (ignores `user`). */
+/**
+ * Non-blocking ADS-B transport for `AdsbPoller`.
+ * Starts a background GET on first call for a URL; returns false while in
+ * flight; returns true once with the body when complete. Failures return
+ * false and clear the worker so the poller can retry / advance its timer.
+ * Never blocks the UI/sweep thread.
+ */
 bool simAdsbHttpGet(const char* url, char* body, std::size_t bodyCap, std::size_t& bodyLen,
                     void* user);
 
