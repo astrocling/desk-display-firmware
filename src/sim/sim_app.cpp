@@ -30,24 +30,6 @@ lv_color_t rgb(uint32_t c) {
   return lv_color_make((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
 }
 
-const char* screen_name(desk_display::Screen s) {
-  using desk_display::Screen;
-  switch (s) {
-    case Screen::Clock:
-      return "Clock";
-    case Screen::Timezones:
-      return "Timezones";
-    case Screen::Weather:
-      return "Weather";
-    case Screen::Sports:
-      return "Sports";
-    case Screen::Radar:
-      return "Radar";
-    default:
-      return "?";
-  }
-}
-
 lv_obj_t* make_status_icon(lv_obj_t* parent, desk_display::TzRowStatus st) {
   constexpr lv_coord_t kSize = 12;
 
@@ -107,19 +89,23 @@ bool SimApp::init() {
   lv_obj_set_style_pad_all(root_, 0, 0);
   lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE);
 
-  chrome_ = lv_label_create(root_);
-  lv_obj_set_style_text_color(chrome_, rgb(desk_display::theme::kDim), 0);
-  lv_obj_set_style_text_font(chrome_, &lv_font_montserrat_12, 0);
-  lv_obj_align(chrome_, LV_ALIGN_TOP_MID, 0, 10);
+  carousel_root_ = lv_obj_create(root_);
+  lv_obj_set_size(carousel_root_, kDispW, kDispH);
+  lv_obj_center(carousel_root_);
+  lv_obj_set_style_bg_opa(carousel_root_, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(carousel_root_, 0, 0);
+  lv_obj_set_style_pad_all(carousel_root_, 0, 0);
+  lv_obj_clear_flag(carousel_root_, LV_OBJ_FLAG_SCROLLABLE);
+  carousel_ = desk_ui::carousel_lvgl_build(carousel_root_);
+  desk_ui::carousel_lvgl_set_highlight(carousel_, nav_.highlighted());
 
-  content_ = lv_obj_create(root_);
-  // Near full-bleed so the radar disc can use most of the 360 round display.
-  lv_obj_set_size(content_, kDispW - 8, kDispH - 28);
-  lv_obj_align(content_, LV_ALIGN_CENTER, 0, desk_ui::kRadarContentOffsetY);
-  lv_obj_set_style_bg_opa(content_, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(content_, 0, 0);
-  lv_obj_set_style_pad_all(content_, 0, 0);
-  lv_obj_clear_flag(content_, LV_OBJ_FLAG_SCROLLABLE);
+  focused_host_ = lv_obj_create(root_);
+  lv_obj_set_size(focused_host_, kDispW, kDispH);
+  lv_obj_center(focused_host_);
+  lv_obj_set_style_bg_opa(focused_host_, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(focused_host_, 0, 0);
+  lv_obj_set_style_pad_all(focused_host_, 0, 0);
+  lv_obj_clear_flag(focused_host_, LV_OBJ_FLAG_SCROLLABLE);
 
   last_screen_ = desk_display::Screen::Count;
   rebuild_ui_for_active();
@@ -161,32 +147,50 @@ void SimApp::sync_clock_from_wall() {
 }
 
 void SimApp::rebuild_ui_for_active() {
+  using desk_display::NavMode;
+  const bool carousel_mode = nav_.mode() == NavMode::Carousel;
+
+  if (carousel_mode) {
+    lv_obj_clear_flag(carousel_root_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(focused_host_, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(carousel_root_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(focused_host_, LV_OBJ_FLAG_HIDDEN);
+  }
+
   if (body_) {
     lv_obj_del(body_);
     body_ = nullptr;
   }
   desk_ui::radar_lvgl_invalidate();
-  body_ = lv_obj_create(content_);
+
+  lv_obj_t* const body_parent = carousel_mode ? carousel_.preview_host : focused_host_;
+  body_ = lv_obj_create(body_parent);
   lv_obj_set_size(body_, lv_pct(100), lv_pct(100));
   lv_obj_set_style_bg_opa(body_, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(body_, 0, 0);
   lv_obj_set_style_pad_all(body_, 0, 0);
   lv_obj_clear_flag(body_, LV_OBJ_FLAG_SCROLLABLE);
 
+  if (carousel_mode) {
+    desk_ui::carousel_lvgl_set_highlight(carousel_, nav_.highlighted());
+  }
+
   last_screen_ = nav_.active_screen();
   last_mode_ = nav_.mode();
   refresh_content();
 }
 
-void SimApp::refresh_content() {
-  using desk_display::NavMode;
-  using desk_display::Screen;
+void SimApp::settle_focused_screens() {
+  weather_.onIdleSettle();
+  radar_.onIdleSettle();
+  sports_.onIdleSettle();
+  timezones_.onIdleSettle();
+  // Clock: no ephemeral state.
+}
 
-  char chrome[64];
-  std::snprintf(chrome, sizeof(chrome), "%s · %s",
-                nav_.mode() == NavMode::Carousel ? "Carousel" : "Focused",
-                screen_name(nav_.active_screen()));
-  lv_label_set_text(chrome_, chrome);
+void SimApp::refresh_content() {
+  using desk_display::Screen;
 
   if (!body_) {
     return;
@@ -248,7 +252,7 @@ void SimApp::refresh_content() {
       constexpr lv_coord_t kRowPitch = 28;
       constexpr lv_coord_t kRowCount =
           static_cast<lv_coord_t>(desk_display::kTimezoneBoardRows);
-      // content_ is kDispH - 48; center the block in that area
+      // Approximate body_ height; center the block in that area
       constexpr lv_coord_t kBodyH = static_cast<lv_coord_t>(kDispH - 48);
       const lv_coord_t startY = (kBodyH - kRowCount * kRowPitch) / 2;
       for (std::size_t i = 0; i < desk_display::kTimezoneBoardRows; ++i) {
@@ -584,9 +588,10 @@ void SimApp::on_tap_focused(int16_t x, int16_t y) {
     case Screen::Radar: {
       const auto rv = radar_.view();
 
-      // Disc center in absolute display px: root_ is centered on the display,
-      // content_ is centered on root_ with kRadarContentOffsetY, and the disc
-      // is centered within body_/content_.
+      // Disc center in absolute display px: root_ and focused_host_ are both
+      // centered on the display, and the disc is centered within body_.
+      // kRadarContentOffsetY is a legacy nudge; Task 5 rescales the disc to
+      // its parent and updates this hit-test to match exactly.
       constexpr float kDiscCenterX = static_cast<float>(kDispW) / 2.0f;
       constexpr float kDiscCenterY =
           static_cast<float>(kDispH) / 2.0f +
@@ -733,7 +738,12 @@ void SimApp::update(uint32_t elapsed_ms) {
     }
   }
 
-  nav_.on_tick(elapsed_ms);
+  const auto idle = nav_.on_tick(elapsed_ms);
+  if (idle == desk_display::IdleEvent::SettleFocused) {
+    settle_focused_screens();
+  }
+  // HomeToClock changes mode + active screen, which the checks below already
+  // catch and route through rebuild_ui_for_active().
 
   // Poll adsb.lol only while Radar is the active screen; sweep animation
   // also only advances while Radar is visible.
@@ -753,9 +763,9 @@ void SimApp::update(uint32_t elapsed_ms) {
 
   if (nav_.active_screen() != last_screen_ || nav_.mode() != last_mode_) {
     rebuild_ui_for_active();
-  } else if (got_fresh || radar_active) {
-    // Refresh every tick while Radar is up so the sweep keeps moving even
-    // with a target selected.
+  } else if (idle == desk_display::IdleEvent::SettleFocused || got_fresh || radar_active) {
+    // Refresh on settle (so cleared overlays render) and every tick while
+    // Radar is up so the sweep keeps moving even with a target selected.
     refresh_content();
   }
 }

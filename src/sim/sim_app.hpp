@@ -8,6 +8,8 @@
 #include "desk_display/screen_timezones.hpp"
 #include "desk_display/screen_weather.hpp"
 
+#include "../ui/carousel_lvgl.hpp"
+
 #include <lvgl.h>
 
 namespace sim {
@@ -24,6 +26,7 @@ class SimApp {
   void sync_clock_from_wall();
   void rebuild_ui_for_active();
   void refresh_content();
+  void settle_focused_screens();
   void on_rotate_focused(int delta);
   void on_tap_focused(int16_t x, int16_t y);
   void on_double_tap_focused();
@@ -38,9 +41,10 @@ class SimApp {
   desk_display::AdsbPoller adsb_poll_;
 
   lv_obj_t* root_ = nullptr;
-  lv_obj_t* content_ = nullptr;
-  lv_obj_t* chrome_ = nullptr;  // mode / screen label
-  lv_obj_t* body_ = nullptr;
+  lv_obj_t* carousel_root_ = nullptr;
+  desk_ui::CarouselChrome carousel_{};
+  lv_obj_t* focused_host_ = nullptr;
+  lv_obj_t* body_ = nullptr;  // child of carousel_.preview_host or focused_host_
 
   desk_display::Screen last_screen_ = desk_display::Screen::Count;
   desk_display::NavMode last_mode_ = desk_display::NavMode::Carousel;
