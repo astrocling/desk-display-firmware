@@ -588,16 +588,16 @@ void SimApp::on_tap_focused(int16_t x, int16_t y) {
     case Screen::Radar: {
       const auto rv = radar_.view();
 
-      // Disc center in absolute display px: root_ and focused_host_ are both
-      // centered on the display, and the disc is centered within body_.
-      // kRadarContentOffsetY is a legacy nudge; Task 5 rescales the disc to
-      // its parent and updates this hit-test to match exactly.
+      // Disc center in absolute display px: root_, focused_host_, and body_
+      // are all centered on the display and equal in size, so the disc
+      // (centered within body_) is centered on the display too. Plot radius
+      // matches whatever radar_lvgl_build sized the live disc to for body_.
       constexpr float kDiscCenterX = static_cast<float>(kDispW) / 2.0f;
-      constexpr float kDiscCenterY =
-          static_cast<float>(kDispH) / 2.0f +
-          static_cast<float>(desk_ui::kRadarContentOffsetY);
+      constexpr float kDiscCenterY = static_cast<float>(kDispH) / 2.0f;
       constexpr float kHitRadiusPx = 24.0f;
-      const float scale = desk_ui::radar_blip_scale(rv.rangeMiles);
+      const lv_coord_t discPx = desk_ui::radar_disc_px_for_parent(body_);
+      const float plotRadiusPx = desk_ui::radar_plot_radius_px(discPx);
+      const float scale = desk_ui::radar_blip_scale(rv.rangeMiles, plotRadiusPx);
       const float rx = static_cast<float>(x) - kDiscCenterX;
       const float ry = static_cast<float>(y) - kDiscCenterY;
 

@@ -62,6 +62,11 @@ lv_obj_t* g_sweep_line = nullptr;
 lv_obj_t* g_blips_layer = nullptr;
 bool g_built = false;
 
+// Geometry for the currently built disc — sized from the parent at build
+// time (Task 5); animate-path helpers reuse these instead of a fixed const.
+lv_coord_t g_disc_px = 0;
+float g_plot_radius_px = 0.0f;
+
 void sweep_endpoint(float angleDeg, lv_coord_t cx, lv_coord_t cy, float r,
                     lv_point_t& out) {
   const float rad = angleDeg * kPi / 180.0f;
@@ -84,7 +89,7 @@ void format_detail_card_line(char* line, std::size_t lineLen,
 
 void build_rings(lv_obj_t* disc) {
   for (int i = 1; i <= kRingCount; ++i) {
-    const lv_coord_t d = static_cast<lv_coord_t>(kRadarDiscPx * i / kRingCount);
+    const lv_coord_t d = static_cast<lv_coord_t>(g_disc_px * i / kRingCount);
     lv_obj_t* ring = lv_obj_create(disc);
     lv_obj_set_size(ring, d, d);
     lv_obj_center(ring);
@@ -99,9 +104,9 @@ void build_rings(lv_obj_t* disc) {
 }
 
 void apply_trail_geometry(float sweepAngleDeg) {
-  const float r = static_cast<float>(kRadarDiscPx) / 2.0f - 1.0f;
-  const lv_coord_t cx = kRadarDiscPx / 2;
-  const lv_coord_t cy = kRadarDiscPx / 2;
+  const float r = static_cast<float>(g_disc_px) / 2.0f - 1.0f;
+  const lv_coord_t cx = g_disc_px / 2;
+  const lv_coord_t cy = g_disc_px / 2;
 
   for (int i = 1; i <= kTrailSlices; ++i) {
     const float frac = static_cast<float>(i) / static_cast<float>(kTrailSlices);
@@ -190,12 +195,12 @@ void draw_selected_tag(lv_obj_t* layer, const desk_display::RadarView& v,
  * zoomed in. Selected target stays bright and gets an ATC-lite tag.
  */
 void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
-  const float scale = radar_blip_scale(v.rangeMiles);
+  const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
   const bool vectors = show_vectors(v.rangeMiles);
   const std::size_t count =
       v.blipCount < static_cast<std::size_t>(kMaxDots) ? v.blipCount : kMaxDots;
-  const lv_coord_t cx = kRadarDiscPx / 2;
-  const lv_coord_t cy = kRadarDiscPx / 2;
+  const lv_coord_t cx = g_disc_px / 2;
+  const lv_coord_t cy = g_disc_px / 2;
 
   for (std::size_t i = 0; i < count; ++i) {
     const auto& b = v.blips[i];
@@ -302,6 +307,8 @@ void clear_animate_cache() {
   g_sweep_line = nullptr;
   g_blips_layer = nullptr;
   g_built = false;
+  g_disc_px = 0;
+  g_plot_radius_px = 0.0f;
   for (int i = 0; i < kTrailSlices; ++i) {
     g_trail_rays[i] = nullptr;
   }
@@ -348,8 +355,11 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
   lv_obj_set_style_text_color(g_hdr, rgb(desk_display::theme::kDim), 0);
   lv_obj_align(g_hdr, LV_ALIGN_TOP_MID, 0, 2);
 
+  g_disc_px = radar_disc_px_for_parent(parent);
+  g_plot_radius_px = radar_plot_radius_px(g_disc_px);
+
   g_disc = lv_obj_create(parent);
-  lv_obj_set_size(g_disc, kRadarDiscPx, kRadarDiscPx);
+  lv_obj_set_size(g_disc, g_disc_px, g_disc_px);
   lv_obj_center(g_disc);
   lv_obj_set_style_bg_opa(g_disc, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(g_disc, 0, 0);
@@ -361,7 +371,7 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
   build_sweep(g_disc, v.sweepAngleDeg);
 
   g_blips_layer = lv_obj_create(g_disc);
-  lv_obj_set_size(g_blips_layer, kRadarDiscPx, kRadarDiscPx);
+  lv_obj_set_size(g_blips_layer, g_disc_px, g_disc_px);
   lv_obj_set_pos(g_blips_layer, 0, 0);
   lv_obj_set_style_bg_opa(g_blips_layer, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(g_blips_layer, 0, 0);

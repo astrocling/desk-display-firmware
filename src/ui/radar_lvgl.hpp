@@ -6,17 +6,36 @@
 
 namespace desk_ui {
 
-/** Diameter (px) of the radar disc (rings + sweep + blips). Near full 360 display. */
-constexpr lv_coord_t kRadarDiscPx = 340;
+/** Inset (px) kept between the disc's outer ring and the parent's round clip. */
+constexpr lv_coord_t kRadarDiscInsetPx = 4;
 
-/** Blip plot radius (px) — slightly inside the outer ring. */
-constexpr float kRadarPlotRadiusPx = 160.0f;
+/** Floor (px) for the computed disc diameter, guarding degenerate parents. */
+constexpr lv_coord_t kRadarDiscMinPx = 60;
 
-/** Content-area Y nudge used by the sim shell; hit-tests must match. */
-constexpr lv_coord_t kRadarContentOffsetY = 4;
+/** Pixels trimmed from the disc radius so plotted blips stay inside the outer ring. */
+constexpr float kRadarPlotRadiusInsetPx = 10.0f;
 
-inline float radar_blip_scale(float rangeMiles) {
-  return kRadarPlotRadiusPx / (rangeMiles > 0.0f ? rangeMiles : 1.0f);
+/**
+ * Disc diameter (px), sized from `parent`'s content box: the smaller of its
+ * content width/height, inset by `kRadarDiscInsetPx` on each side so the
+ * outer ring stays inside a round clip (display bezel or carousel preview).
+ * Clamped to `kRadarDiscMinPx` for degenerate parents.
+ */
+inline lv_coord_t radar_disc_px_for_parent(lv_obj_t* parent) {
+  const lv_coord_t cw = lv_obj_get_content_width(parent);
+  const lv_coord_t ch = lv_obj_get_content_height(parent);
+  const lv_coord_t avail = cw < ch ? cw : ch;
+  const lv_coord_t disc = avail - kRadarDiscInsetPx * 2;
+  return disc > kRadarDiscMinPx ? disc : kRadarDiscMinPx;
+}
+
+/** Blip plot radius (px) for a disc of the given diameter — inside the outer ring. */
+inline float radar_plot_radius_px(lv_coord_t discPx) {
+  return static_cast<float>(discPx) / 2.0f - kRadarPlotRadiusInsetPx;
+}
+
+inline float radar_blip_scale(float rangeMiles, float plotRadiusPx) {
+  return plotRadiusPx / (rangeMiles > 0.0f ? rangeMiles : 1.0f);
 }
 
 /**
