@@ -1,5 +1,6 @@
 #include "radar_lvgl.hpp"
 
+#include "desk_display/map_context.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/radar_format.hpp"
 #include "desk_display/screen_radar.hpp"
@@ -22,6 +23,16 @@ constexpr uint32_t kSelectedColor = 0xFFFFFF;
 constexpr uint32_t kLeaderColor = 0x3D9CF0;
 /** Unselected tag/leader opacity — readable but quieter than selection. */
 constexpr lv_opa_t kTagDimOpa = LV_OPA_60;
+
+constexpr uint32_t kAirspaceColorB = 0x3A6AA8;
+constexpr uint32_t kAirspaceColorC = 0xA83A7A;
+constexpr uint32_t kAirspaceColorD = 0x3A6AA8;
+constexpr lv_coord_t kAirspaceDashWidth = 4;
+constexpr lv_coord_t kAirspaceDashGap = 3;
+constexpr uint32_t kAirportMarkColor = 0xFFFFFF;
+constexpr uint32_t kPoiMarkColor = 0xAAAAAA;
+constexpr lv_coord_t kPoiMarkPx = 6;
+constexpr float kStaticHitRadiusPx = 28.0f;
 
 // Compact phosphor trail — enough to read motion without washing the map.
 constexpr float kTrailArcDeg = 12.0f;
@@ -61,6 +72,7 @@ lv_obj_t* g_hdr = nullptr;
 lv_obj_t* g_disc = nullptr;
 lv_obj_t* g_trail_rays[kTrailSlices] = {};
 lv_obj_t* g_sweep_line = nullptr;
+lv_obj_t* g_static_layer = nullptr;
 lv_obj_t* g_blips_layer = nullptr;
 bool g_built = false;
 
@@ -68,6 +80,20 @@ bool g_built = false;
 // time (Task 5); animate-path helpers reuse these instead of a fixed const.
 lv_coord_t g_disc_px = 0;
 float g_plot_radius_px = 0.0f;
+
+// Overlay rebuild signature — static/airspace only when center/range/selection
+// changes (sweep animate path skips when unchanged).
+float g_cached_range = -1.0f;
+double g_cached_center_lat = 0.0;
+double g_cached_center_lon = 0.0;
+std::size_t g_cached_static_count = 0;
+std::size_t g_cached_ring_count = 0;
+bool g_cached_has_static_sel = false;
+std::size_t g_cached_selected_static = 0;
+
+constexpr int kMaxAirspaceSegs = 640;
+lv_point_t g_airspace_seg_pts[kMaxAirspaceSegs][2];
+int g_airspace_seg_used = 0;
 
 void sweep_endpoint(float angleDeg, lv_coord_t cx, lv_coord_t cy, float r,
                     lv_point_t& out) {
@@ -80,6 +106,196 @@ void format_header(char* hdr, std::size_t hdrLen, const desk_display::RadarView&
   std::snprintf(hdr, hdrLen, "%.0f mi · %zu%s",
                 static_cast<double>(v.rangeMiles), v.blipCount,
                 show_vectors(v.rangeMiles) ? " · vec" : "");
+}
+
+bool disc_hit_geometry(lv_obj_t* parent, const desk_display::RadarView& v,
+                       float* outCx, float* outCy, float* outScale) {
+  if (!parent || parent != g_parent || !g_built || !g_disc || g_disc_px <= 0 ||
+      g_plot_radius_px <= 0.0f) {
+    return false;
+  }
+  lv_area_t discArea{};
+  lv_obj_get_coords(g_disc, &discArea);
+  *outCx = static_cast<float>(discArea.x1) + static_cast<float>(g_disc_px) / 2.0f;
+  *outCy = static_cast<float>(discArea.y1) + static_cast<float>(g_disc_px) / 2.0f;
+  *outScale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
+  return true;
+}
+
+void cache_overlay_state(const desk_display::RadarView& v) {
+  g_cached_range = v.rangeMiles;
+  g_cached_center_lat = v.centerLat;
+  g_cached_center_lon = v.centerLon;
+  g_cached_static_count = v.staticMarkCount;
+  g_cached_ring_count = v.airspaceRingCount;
+  g_cached_has_static_sel = v.hasStaticSelection;
+  g_cached_selected_static = v.selectedStaticIndex;
+}
+
+bool overlay_needs_rebuild(const desk_display::RadarView& v) {
+  return v.rangeMiles != g_cached_range || v.centerLat != g_cached_center_lat ||
+         v.centerLon != g_cached_center_lon ||
+         v.staticMarkCount != g_cached_static_count ||
+         v.airspaceRingCount != g_cached_ring_count ||
+         v.hasStaticSelection != g_cached_has_static_sel ||
+         v.selectedStaticIndex != g_cached_selected_static;
+}
+
+uint32_t airspace_color(desk_display::AirspaceClass cls) {
+  switch (cls) {
+    case desk_display::AirspaceClass::B:
+      return kAirspaceColorB;
+    case desk_display::AirspaceClass::C:
+      return kAirspaceColorC;
+    case desk_display::AirspaceClass::D:
+      return kAirspaceColorD;
+  }
+  return kAirspaceColorB;
+}
+
+bool airspace_dashed(desk_display::AirspaceClass cls) {
+  return cls == desk_display::AirspaceClass::D;
+}
+
+lv_obj_t* add_airspace_segment(lv_obj_t* layer, lv_coord_t x0, lv_coord_t y0,
+                               lv_coord_t x1, lv_coord_t y1, uint32_t color) {
+  if (g_airspace_seg_used >= kMaxAirspaceSegs) {
+    return nullptr;
+  }
+  g_airspace_seg_pts[g_airspace_seg_used][0] = {x0, y0};
+  g_airspace_seg_pts[g_airspace_seg_used][1] = {x1, y1};
+  lv_obj_t* line = lv_line_create(layer);
+  lv_obj_set_pos(line, 0, 0);
+  lv_line_set_points(line, g_airspace_seg_pts[g_airspace_seg_used], 2);
+  lv_obj_set_style_line_width(line, 1, 0);
+  lv_obj_set_style_line_color(line, rgb(color), 0);
+  lv_obj_set_style_line_rounded(line, false, 0);
+  lv_obj_clear_flag(line, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
+  ++g_airspace_seg_used;
+  return line;
+}
+
+void draw_airspace_edge(lv_obj_t* layer, lv_coord_t x0, lv_coord_t y0, lv_coord_t x1,
+                        lv_coord_t y1, uint32_t color, bool dashed) {
+  if (!dashed) {
+    add_airspace_segment(layer, x0, y0, x1, y1, color);
+    return;
+  }
+
+  const float dx = static_cast<float>(x1 - x0);
+  const float dy = static_cast<float>(y1 - y0);
+  const float len = std::sqrt(dx * dx + dy * dy);
+  if (len < 0.5f) {
+    return;
+  }
+  const float ux = dx / len;
+  const float uy = dy / len;
+  const float dash = static_cast<float>(kAirspaceDashWidth);
+  const float gap = static_cast<float>(kAirspaceDashGap);
+  float pos = 0.0f;
+  bool drawing = true;
+  while (pos < len) {
+    const float segLen = drawing ? dash : gap;
+    const float next = pos + segLen;
+    if (drawing) {
+      const float t0 = pos;
+      const float t1 = next < len ? next : len;
+      add_airspace_segment(
+          layer, static_cast<lv_coord_t>(x0 + ux * t0),
+          static_cast<lv_coord_t>(y0 + uy * t0),
+          static_cast<lv_coord_t>(x0 + ux * t1),
+          static_cast<lv_coord_t>(y0 + uy * t1), color);
+    }
+    pos = next;
+    drawing = !drawing;
+  }
+}
+
+void build_airspace(lv_obj_t* layer, const desk_display::RadarView& v) {
+  if (!layer || !v.airspaceRings || v.airspaceRingCount == 0) {
+    return;
+  }
+
+  g_airspace_seg_used = 0;
+  const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
+  const lv_coord_t cx = g_disc_px / 2;
+  const lv_coord_t cy = g_disc_px / 2;
+
+  for (std::size_t r = 0; r < v.airspaceRingCount; ++r) {
+    const auto& ring = v.airspaceRings[r];
+    if (ring.pointCount < 2) {
+      continue;
+    }
+    const uint32_t color = airspace_color(ring.cls);
+    const bool dashed = airspace_dashed(ring.cls);
+    for (uint8_t i = 0; i < ring.pointCount; ++i) {
+      const uint8_t j = static_cast<uint8_t>((i + 1) % ring.pointCount);
+      const lv_coord_t x0 =
+          static_cast<lv_coord_t>(cx + ring.offsetXMi[i] * scale);
+      const lv_coord_t y0 =
+          static_cast<lv_coord_t>(cy - ring.offsetYMi[i] * scale);
+      const lv_coord_t x1 =
+          static_cast<lv_coord_t>(cx + ring.offsetXMi[j] * scale);
+      const lv_coord_t y1 =
+          static_cast<lv_coord_t>(cy - ring.offsetYMi[j] * scale);
+      draw_airspace_edge(layer, x0, y0, x1, y1, color, dashed);
+    }
+  }
+}
+
+void build_static_marks(lv_obj_t* layer, const desk_display::RadarView& v) {
+  if (!layer || !v.staticMarks || v.staticMarkCount == 0) {
+    return;
+  }
+
+  const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
+  const lv_coord_t cx = g_disc_px / 2;
+  const lv_coord_t cy = g_disc_px / 2;
+
+  for (std::size_t i = 0; i < v.staticMarkCount; ++i) {
+    const auto& mark = v.staticMarks[i];
+    const lv_coord_t x = static_cast<lv_coord_t>(mark.offsetXMi * scale);
+    const lv_coord_t y = static_cast<lv_coord_t>(-mark.offsetYMi * scale);
+    const lv_coord_t bx = cx + x;
+    const lv_coord_t by = cy + y;
+    const bool selected = v.hasStaticSelection && v.selectedStaticIndex == i;
+
+    if (mark.kind == desk_display::RadarStaticMark::Kind::Airport) {
+      lv_obj_t* glyph = lv_label_create(layer);
+      lv_label_set_text(glyph, "+");
+      lv_obj_set_style_text_font(glyph, &lv_font_montserrat_12, 0);
+      lv_obj_set_style_text_color(glyph, rgb(kAirportMarkColor), 0);
+      lv_obj_clear_flag(glyph, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_clear_flag(glyph, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_align(glyph, LV_ALIGN_CENTER, x, y);
+    } else {
+      lv_obj_t* glyph = lv_obj_create(layer);
+      lv_obj_set_size(glyph, kPoiMarkPx, kPoiMarkPx);
+      lv_obj_set_style_radius(glyph, 0, 0);
+      lv_obj_set_style_bg_color(glyph, rgb(kPoiMarkColor), 0);
+      lv_obj_set_style_bg_opa(glyph, LV_OPA_COVER, 0);
+      lv_obj_set_style_border_width(glyph, 0, 0);
+      lv_obj_set_style_pad_all(glyph, 0, 0);
+      lv_obj_clear_flag(glyph, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_clear_flag(glyph, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_align(glyph, LV_ALIGN_CENTER, x, y);
+    }
+
+    if (selected && mark.label[0] != '\0') {
+      lv_obj_t* tag = lv_label_create(layer);
+      lv_label_set_text(tag, mark.label);
+      lv_obj_set_style_text_font(tag, &lv_font_montserrat_10, 0);
+      lv_obj_set_style_text_color(tag, rgb(kAirportMarkColor), 0);
+      lv_obj_set_pos(tag, bx + 10, by - 14);
+    }
+  }
+}
+
+void build_static_overlay(lv_obj_t* layer, const desk_display::RadarView& v) {
+  build_airspace(layer, v);
+  build_static_marks(layer, v);
+  cache_overlay_state(v);
 }
 
 void build_rings(lv_obj_t* disc) {
@@ -326,10 +542,19 @@ void clear_animate_cache() {
   g_hdr = nullptr;
   g_disc = nullptr;
   g_sweep_line = nullptr;
+  g_static_layer = nullptr;
   g_blips_layer = nullptr;
   g_built = false;
   g_disc_px = 0;
   g_plot_radius_px = 0.0f;
+  g_cached_range = -1.0f;
+  g_cached_center_lat = 0.0;
+  g_cached_center_lon = 0.0;
+  g_cached_static_count = 0;
+  g_cached_ring_count = 0;
+  g_cached_has_static_sel = false;
+  g_cached_selected_static = 0;
+  g_airspace_seg_used = 0;
   for (int i = 0; i < kTrailSlices; ++i) {
     g_trail_rays[i] = nullptr;
   }
@@ -338,6 +563,43 @@ void clear_animate_cache() {
 }  // namespace
 
 void radar_lvgl_invalidate() { clear_animate_cache(); }
+
+bool radar_lvgl_hit_static(lv_obj_t* parent, const desk_display::RadarView& v,
+                           lv_coord_t absX, lv_coord_t absY, std::size_t* outIndex) {
+  if (!outIndex || !v.staticMarks || v.staticMarkCount == 0) {
+    return false;
+  }
+
+  float cx = 0.0f;
+  float cy = 0.0f;
+  float scale = 0.0f;
+  if (!disc_hit_geometry(parent, v, &cx, &cy, &scale)) {
+    return false;
+  }
+
+  const float rx = static_cast<float>(absX) - cx;
+  const float ry = static_cast<float>(absY) - cy;
+  const float hitR2 = kStaticHitRadiusPx * kStaticHitRadiusPx;
+
+  std::size_t nearest = 0;
+  float nearestDistSq = -1.0f;
+  for (std::size_t i = 0; i < v.staticMarkCount; ++i) {
+    const auto& mark = v.staticMarks[i];
+    const float dx = mark.offsetXMi * scale - rx;
+    const float dy = -mark.offsetYMi * scale - ry;
+    const float distSq = dx * dx + dy * dy;
+    if (nearestDistSq < 0.0f || distSq < nearestDistSq) {
+      nearestDistSq = distSq;
+      nearest = i;
+    }
+  }
+
+  if (nearestDistSq < 0.0f || nearestDistSq > hitR2) {
+    return false;
+  }
+  *outIndex = nearest;
+  return true;
+}
 
 bool radar_lvgl_hit_blip(lv_obj_t* parent, const desk_display::RadarView& v,
                          lv_coord_t absX, lv_coord_t absY, std::size_t* outIndex) {
@@ -389,8 +651,8 @@ bool radar_lvgl_hit_blip(lv_obj_t* parent, const desk_display::RadarView& v,
 
 bool radar_lvgl_animate_classic(lv_obj_t* parent,
                                 const desk_display::RadarView& v) {
-  if (!parent || parent != g_parent || !g_built || !g_disc || !g_blips_layer ||
-      !g_sweep_line) {
+  if (!parent || parent != g_parent || !g_built || !g_disc || !g_static_layer ||
+      !g_blips_layer || !g_sweep_line) {
     return false;
   }
   for (int i = 0; i < kTrailSlices; ++i) {
@@ -406,6 +668,11 @@ bool radar_lvgl_animate_classic(lv_obj_t* parent,
   }
 
   apply_trail_geometry(v.sweepAngleDeg);
+
+  if (overlay_needs_rebuild(v)) {
+    lv_obj_clean(g_static_layer);
+    build_static_overlay(g_static_layer, v);
+  }
 
   lv_obj_clean(g_blips_layer);
   build_traffic(g_blips_layer, v);
@@ -437,6 +704,16 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
 
   build_rings(g_disc);
   build_sweep(g_disc, v.sweepAngleDeg);
+
+  g_static_layer = lv_obj_create(g_disc);
+  lv_obj_set_size(g_static_layer, g_disc_px, g_disc_px);
+  lv_obj_set_pos(g_static_layer, 0, 0);
+  lv_obj_set_style_bg_opa(g_static_layer, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(g_static_layer, 0, 0);
+  lv_obj_set_style_pad_all(g_static_layer, 0, 0);
+  lv_obj_clear_flag(g_static_layer, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(g_static_layer, LV_OBJ_FLAG_CLICKABLE);
+  build_static_overlay(g_static_layer, v);
 
   g_blips_layer = lv_obj_create(g_disc);
   lv_obj_set_size(g_blips_layer, g_disc_px, g_disc_px);

@@ -5,6 +5,7 @@
 #include "desk_display/adsb.hpp"
 #include "desk_display/airport.hpp"
 #include "desk_display/format_time.hpp"
+#include "desk_display/map_context.hpp"
 #include "desk_display/scores.hpp"
 #include "desk_display/theme.hpp"
 #include "desk_display/timezones.hpp"
@@ -138,6 +139,12 @@ void SimApp::load_fixtures() {
   desk_display::AircraftList ac{};
   if (loadFixture("adsb_sample.json", buf, sizeof(buf)) && desk_display::parseAdsb(buf, ac)) {
     radar_.bind(ac);
+  }
+
+  desk_display::MapContext mapCtx{};
+  if (loadFixture("map_context_dayton.json", buf, sizeof(buf)) &&
+      desk_display::parseMapContext(buf, mapCtx)) {
+    radar_.bindMapContext(mapCtx);
   }
 
 #if defined(RADAR_POI_COUNT)
@@ -597,15 +604,22 @@ void SimApp::on_tap_focused(int16_t x, int16_t y) {
     case Screen::Radar: {
       const auto rv = radar_.view();
       std::size_t nearest = 0;
-      // Use the live disc's LVGL coords + plot scale (same as drawing).
+      // Aircraft wins when both overlap; try blip first, then static marks.
       if (desk_ui::radar_lvgl_hit_blip(body_, rv, x, y, &nearest)) {
         if (radar_.hasSelection() && radar_.selectedIndex() == nearest) {
           radar_.clearSelection();
         } else {
           radar_.selectBlip(nearest);
         }
+      } else if (desk_ui::radar_lvgl_hit_static(body_, rv, x, y, &nearest)) {
+        if (rv.hasStaticSelection && rv.selectedStaticIndex == nearest) {
+          radar_.clearStaticSelection();
+        } else {
+          radar_.selectStaticMark(nearest);
+        }
       } else {
         radar_.clearSelection();
+        radar_.clearStaticSelection();
       }
       break;
     }
@@ -629,6 +643,7 @@ void SimApp::on_double_tap_focused() {
       break;
     case Screen::Radar:
       radar_.clearSelection();
+      radar_.clearStaticSelection();
       break;
     default:
       break;

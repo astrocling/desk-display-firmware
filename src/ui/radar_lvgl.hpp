@@ -75,4 +75,11 @@ void radar_lvgl_invalidate();
 bool radar_lvgl_hit_blip(lv_obj_t* parent, const desk_display::RadarView& v,
                          lv_coord_t absX, lv_coord_t absY, std::size_t* outIndex);
 
+/**
+ * Hit-test a tap against projected airport / POI marks (under traffic).
+ * Aircraft hits take priority — call `radar_lvgl_hit_blip` first.
+ */
+bool radar_lvgl_hit_static(lv_obj_t* parent, const desk_display::RadarView& v,
+                           lv_coord_t absX, lv_coord_t absY, std::size_t* outIndex);
+
 }  // namespace desk_ui
