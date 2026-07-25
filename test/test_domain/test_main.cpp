@@ -8,6 +8,7 @@
 #include "desk_display/format_time.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/radar_format.hpp"
+#include "desk_display/scores_poll.hpp"
 #include "desk_display/scrub.hpp"
 #include "desk_display/timezone_status.hpp"
 #include "desk_display/weather_icons.hpp"
@@ -288,6 +289,62 @@ void test_adsb_poller_retries_while_http_pending(void) {
   TEST_ASSERT_EQUAL(1, list.count);
 }
 
+bool fake_scores_http(const char* /*url*/, char* body, std::size_t cap, std::size_t& len,
+                      void* /*user*/) {
+  ++g_http_calls;
+  const char* json =
+      "{\"mlb\":{\"live\":true,\"score\":\"3-1\",\"inning\":\"Top 5\",\"nextGame\":null},"
+      "\"flagstand\":{\"lastResult\":null,\"nextRace\":null},"
+      "\"updatedAt\":\"2026-07-24T00:00:00.000Z\"}";
+  len = std::strlen(json);
+  if (len + 1 > cap) {
+    return false;
+  }
+  std::memcpy(body, json, len + 1);
+  return true;
+}
+
+void test_build_scores_url(void) {
+  char url[160];
+  TEST_ASSERT_TRUE(buildScoresUrl(url, sizeof(url)));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "/api/scores"));
+}
+
+void test_scores_poller_only_when_active(void) {
+  g_http_calls = 0;
+  ScoresPoller poll;
+  poll.setHttpGet(fake_scores_http, nullptr);
+  poll.setActive(false);
+  poll.onTick(kScoresPollIntervalMs + 1);
+  TEST_ASSERT_EQUAL(0, g_http_calls);
+
+  // Becoming active arms an immediate fetch on the next tick.
+  poll.setActive(true);
+  poll.onTick(1);
+  TEST_ASSERT_EQUAL(1, g_http_calls);
+  Scores scores{};
+  TEST_ASSERT_TRUE(poll.takeScores(scores));
+  TEST_ASSERT_TRUE(scores.mlb.live);
+  TEST_ASSERT_EQUAL_STRING("3-1", scores.mlb.score);
+  TEST_ASSERT_FALSE(poll.takeScores(scores));
+}
+
+void test_scores_poller_waits_full_interval_after_success(void) {
+  g_http_calls = 0;
+  ScoresPoller poll;
+  poll.setHttpGet(fake_scores_http, nullptr);
+  poll.setActive(true);
+  poll.onTick(1);
+  TEST_ASSERT_EQUAL(1, g_http_calls);
+  Scores scores{};
+  TEST_ASSERT_TRUE(poll.takeScores(scores));
+
+  poll.onTick(kScoresPollIntervalMs - 1);
+  TEST_ASSERT_EQUAL(1, g_http_calls);
+  poll.onTick(1);
+  TEST_ASSERT_EQUAL(2, g_http_calls);
+}
+
 void test_radar_offset_and_distance(void) {
   float x = 0.0f;
   float y = 0.0f;
@@ -331,5 +388,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_adsb_poller_only_when_active);
   RUN_TEST(test_adsb_poller_prefetches_before_interval);
   RUN_TEST(test_adsb_poller_retries_while_http_pending);
+  RUN_TEST(test_build_scores_url);
+  RUN_TEST(test_scores_poller_only_when_active);
+  RUN_TEST(test_scores_poller_waits_full_interval_after_success);
   return UNITY_END();
 }

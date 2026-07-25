@@ -84,6 +84,7 @@ bool SimApp::init() {
   sync_clock_from_wall();
   adsb_poll_.setHttpGet(&sim::simAdsbHttpGet, nullptr);
   map_ctx_poll_.setHttpGet(&sim::simMapContextHttpGet, nullptr);
+  scores_poll_.setHttpGet(&sim::simScoresHttpGet, nullptr);
 
   root_ = lv_obj_create(lv_scr_act());
   lv_obj_set_size(root_, kDispW, kDispH);
@@ -746,8 +747,10 @@ void SimApp::update(uint32_t elapsed_ms) {
   // Poll adsb.lol only while Radar is the active screen; sweep animation
   // also only advances while Radar is visible.
   const bool radar_active = nav_.active_screen() == Screen::Radar;
+  const bool sports_active = nav_.active_screen() == Screen::Sports;
   adsb_poll_.setActive(radar_active);
   map_ctx_poll_.setActive(radar_active);
+  scores_poll_.setActive(sports_active);
   if (radar_active) {
     radar_.onTick(elapsed_ms);
     const double lat = radar_.centerLat();
@@ -758,6 +761,7 @@ void SimApp::update(uint32_t elapsed_ms) {
   }
   adsb_poll_.onTick(elapsed_ms);
   map_ctx_poll_.onTick(elapsed_ms);
+  scores_poll_.onTick(elapsed_ms);
 
   AircraftList fresh{};
   const bool got_fresh = adsb_poll_.takeAircraft(fresh);
@@ -771,12 +775,18 @@ void SimApp::update(uint32_t elapsed_ms) {
     radar_.bindMapContext(mapCtx);
   }
 
+  desk_display::Scores freshScores{};
+  const bool got_scores = scores_poll_.takeScores(freshScores);
+  if (got_scores) {
+    sports_.bind(freshScores);
+  }
+
   if (nav_.active_screen() != last_screen_ || nav_.mode() != last_mode_) {
     rebuild_ui_for_active();
   } else if (idle == desk_display::IdleEvent::SettleFocused || got_fresh || got_map_ctx ||
-             radar_active) {
-    // Refresh on settle (so cleared overlays render) and every tick while
-    // Radar is up so the sweep keeps moving even with a target selected.
+             got_scores || radar_active) {
+    // Refresh on settle (so cleared overlays render), when live scores land,
+    // and every tick while Radar is up so the sweep keeps moving.
     refresh_content();
   }
 }

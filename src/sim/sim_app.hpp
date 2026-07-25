@@ -3,6 +3,7 @@
 #include "desk_display/adsb_poll.hpp"
 #include "desk_display/map_context_poll.hpp"
 #include "desk_display/nav.hpp"
+#include "desk_display/scores_poll.hpp"
 #include "desk_display/screen_clock.hpp"
 #include "desk_display/screen_radar.hpp"
 #include "desk_display/screen_sports.hpp"
@@ -41,6 +42,7 @@ class SimApp {
   desk_display::ScreenRadar radar_;
   desk_display::AdsbPoller adsb_poll_;
   desk_display::MapContextPoller map_ctx_poll_;
+  desk_display::ScoresPoller scores_poll_;
 
   lv_obj_t* root_ = nullptr;
   lv_obj_t* carousel_root_ = nullptr;
