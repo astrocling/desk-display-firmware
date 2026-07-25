@@ -170,4 +170,21 @@ bool formatRadarTagLine3(char* buf, std::size_t bufLen, const char* type,
   return wroteAny;
 }
 
+bool formatRadarTagLine4(char* buf, std::size_t bufLen,
+                         const char* arrivalIcao) {
+  if (!buf || bufLen == 0) {
+    return false;
+  }
+  buf[0] = '\0';
+  if (!arrivalIcao || arrivalIcao[0] == '\0') {
+    return false;
+  }
+  const int n = std::snprintf(buf, bufLen, "%s", arrivalIcao);
+  if (n < 0 || static_cast<std::size_t>(n) >= bufLen) {
+    buf[0] = '\0';
+    return false;
+  }
+  return true;
+}
+
 }  // namespace desk_display

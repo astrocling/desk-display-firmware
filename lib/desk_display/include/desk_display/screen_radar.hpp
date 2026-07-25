@@ -93,6 +93,7 @@ struct RadarDetailCard {
   bool hasSpeed;
   char tagLine2[24];
   char tagLine3[28];
+  char tagLine4[8];
   char altLabel[8];
   char speedLabel[8];
   char type[8];

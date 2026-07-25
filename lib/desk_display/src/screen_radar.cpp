@@ -495,6 +495,7 @@ RadarDetailCard ScreenRadar::detailCard() const {
   card.hasSpeed = false;
   card.tagLine2[0] = '\0';
   card.tagLine3[0] = '\0';
+  card.tagLine4[0] = '\0';
   card.altLabel[0] = '\0';
   card.speedLabel[0] = '\0';
   card.type[0] = '\0';
@@ -529,6 +530,7 @@ RadarDetailCard ScreenRadar::detailCard() const {
                       RadarTagStyle::Full);
   formatRadarTagLine3(card.tagLine3, sizeof(card.tagLine3), ac.type, ac.squawk,
                       blip.notable);
+  formatRadarTagLine4(card.tagLine4, sizeof(card.tagLine4), nullptr);
   return card;
 }
 

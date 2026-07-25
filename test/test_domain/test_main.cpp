@@ -183,6 +183,15 @@ void test_format_radar_dense_and_line3(void) {
   TEST_ASSERT_FALSE(formatRadarTagLine3(buf, sizeof(buf), nullptr, ""));
 }
 
+void test_format_radar_tag_line4() {
+  char buf[8];
+  TEST_ASSERT_FALSE(formatRadarTagLine4(buf, sizeof(buf), nullptr));
+  TEST_ASSERT_EQUAL_STRING("", buf);
+  TEST_ASSERT_FALSE(formatRadarTagLine4(buf, sizeof(buf), ""));
+  TEST_ASSERT_TRUE(formatRadarTagLine4(buf, sizeof(buf), "KORD"));
+  TEST_ASSERT_EQUAL_STRING("KORD", buf);
+}
+
 void test_statute_to_nm_and_url(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.05f, 21.7244f, statuteMilesToNauticalMiles(25.0f));
   char url[160];
@@ -503,6 +512,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_trend_deadband);
   RUN_TEST(test_format_radar_tag_line2_omits_missing);
   RUN_TEST(test_format_radar_dense_and_line3);
+  RUN_TEST(test_format_radar_tag_line4);
   RUN_TEST(test_radar_settings_defaults);
   RUN_TEST(test_radar_unselected_label_modes);
   RUN_TEST(test_radar_offset_and_distance);

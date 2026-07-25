@@ -32,4 +32,7 @@ bool formatRadarTagLine3(char* buf, std::size_t bufLen, const char* type,
                          const char* squawk,
                          AircraftNotable notable = AircraftNotable::None);
 
+/** Line 4 (full tag): arrival ICAO. Empty until routeset data exists. */
+bool formatRadarTagLine4(char* buf, std::size_t bufLen, const char* arrivalIcao);
+
 }  // namespace desk_display
