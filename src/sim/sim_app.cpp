@@ -440,7 +440,7 @@ void SimApp::refresh_content() {
           lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
           lv_obj_set_style_border_width(col, 0, 0);
           lv_obj_set_style_pad_all(col, 0, 0);
-          lv_obj_set_style_pad_row(col, 4, 0);
+          lv_obj_set_style_pad_row(col, 6, 0);
           lv_obj_clear_flag(col, LV_OBJ_FLAG_SCROLLABLE);
           lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
           lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
@@ -471,11 +471,12 @@ void SimApp::refresh_content() {
           if (v.mlb.showLiveScorebug) {
             auto add_score_row = [&](const char* abbr, int runs) {
               lv_obj_t* row = lv_obj_create(col);
-              lv_obj_set_size(row, 280, 48);
+              // Logos are 56px; keep row taller + gap so stacked logos don't overlap.
+              lv_obj_set_size(row, 280, 60);
               lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
               lv_obj_set_style_border_width(row, 0, 0);
               lv_obj_set_style_pad_all(row, 0, 0);
-              lv_obj_set_style_pad_column(row, 12, 0);
+              lv_obj_set_style_pad_column(row, 16, 0);
               lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
               lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
               lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
@@ -485,6 +486,7 @@ void SimApp::refresh_content() {
               if (logo) {
                 lv_obj_t* img = lv_img_create(row);
                 lv_img_set_src(img, logo);
+                lv_img_set_zoom(img, 200);  // ~44px from 56px
               } else {
                 lv_obj_t* lab = lv_label_create(row);
                 lv_label_set_text(lab, (abbr && abbr[0]) ? abbr : "?");
@@ -504,7 +506,39 @@ void SimApp::refresh_content() {
             add_score_row(v.mlb.opponentAbbr, v.mlb.opponentRuns);
             add_line(v.mlb.hasInning ? v.mlb.inning : "", true, nullptr);
             add_line(v.mlb.countLine, true, &lv_font_montserrat_14);
-            add_line(v.mlb.basesLine, false, &lv_font_montserrat_14);
+
+            if (v.mlb.hasBases) {
+              // Classic 4-diamond: 2nd top, 3rd left, 1st right, home bottom.
+              lv_obj_t* diamond = lv_obj_create(col);
+              lv_obj_set_size(diamond, 40, 40);
+              lv_obj_set_style_bg_opa(diamond, LV_OPA_TRANSP, 0);
+              lv_obj_set_style_border_width(diamond, 0, 0);
+              lv_obj_set_style_pad_all(diamond, 0, 0);
+              lv_obj_clear_flag(diamond, LV_OBJ_FLAG_SCROLLABLE);
+
+              auto add_base = [&](lv_coord_t x, lv_coord_t y, bool occupied) {
+                constexpr lv_coord_t kSize = 10;
+                lv_obj_t* base = lv_obj_create(diamond);
+                lv_obj_set_size(base, kSize, kSize);
+                lv_obj_set_pos(base, x, y);
+                lv_obj_set_style_radius(base, 0, 0);
+                lv_obj_set_style_pad_all(base, 0, 0);
+                lv_obj_set_style_border_width(base, occupied ? 0 : 1, 0);
+                lv_obj_set_style_border_color(base, rgb(0xFFFFFF), 0);
+                lv_obj_set_style_bg_color(base, rgb(0xFFFFFF), 0);
+                lv_obj_set_style_bg_opa(base, occupied ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+                lv_obj_set_style_transform_pivot_x(base, kSize / 2, 0);
+                lv_obj_set_style_transform_pivot_y(base, kSize / 2, 0);
+                lv_obj_set_style_transform_angle(base, 450, 0);  // 45°
+                lv_obj_clear_flag(base, LV_OBJ_FLAG_SCROLLABLE);
+              };
+
+              add_base(15, 2, v.mlb.onSecond);   // 2nd
+              add_base(2, 15, v.mlb.onThird);    // 3rd
+              add_base(28, 15, v.mlb.onFirst);   // 1st
+              add_base(15, 28, false);           // home (outline)
+            }
+
             add_line(v.mlb.batterPitcherLine, true, &lv_font_montserrat_12);
           } else {
             add_line(v.mlb.primary, false, &lv_font_montserrat_28);

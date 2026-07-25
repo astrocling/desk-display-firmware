@@ -174,8 +174,20 @@ void test_mlb_live_scorebug_view(void) {
   TEST_ASSERT_EQUAL(0, v.mlb.teamRuns);
   TEST_ASSERT_EQUAL(3, v.mlb.opponentRuns);
   TEST_ASSERT_EQUAL_STRING("2-1 - 1 out", v.mlb.countLine);
-  TEST_ASSERT_EQUAL_STRING("Empty", v.mlb.basesLine);
+  TEST_ASSERT_TRUE(v.mlb.hasBases);
+  TEST_ASSERT_FALSE(v.mlb.onFirst);
+  TEST_ASSERT_FALSE(v.mlb.onSecond);
+  TEST_ASSERT_FALSE(v.mlb.onThird);
   TEST_ASSERT_EQUAL_STRING("M. Murakami - A. Blubaugh", v.mlb.batterPitcherLine);
+
+  s.mlb.onFirst = true;
+  s.mlb.onThird = true;
+  g_screen.bind(s);
+  v = g_screen.view();
+  TEST_ASSERT_TRUE(v.mlb.hasBases);
+  TEST_ASSERT_TRUE(v.mlb.onFirst);
+  TEST_ASSERT_FALSE(v.mlb.onSecond);
+  TEST_ASSERT_TRUE(v.mlb.onThird);
 }
 
 void test_flagstand_next_race_when_present(void) {

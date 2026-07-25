@@ -58,33 +58,9 @@ void formatMlbBasesLine(char* dest, std::size_t destLen, const MlbScores& m) {
   const bool first = m.hasOnFirst && m.onFirst;
   const bool second = m.hasOnSecond && m.onSecond;
   const bool third = m.hasOnThird && m.onThird;
-
-  if (!first && !second && !third) {
-    copyStr(dest, destLen, "Empty");
-    return;
-  }
-  if (first && second && third) {
-    copyStr(dest, destLen, "Loaded");
-    return;
-  }
-
-  char parts[3][8]{};
-  int n = 0;
-  if (first) {
-    copyStr(parts[n++], sizeof(parts[0]), "1st");
-  }
-  if (second) {
-    copyStr(parts[n++], sizeof(parts[0]), "2nd");
-  }
-  if (third) {
-    copyStr(parts[n++], sizeof(parts[0]), "3rd");
-  }
-
-  if (n == 1) {
-    copyStr(dest, destLen, parts[0]);
-  } else if (n == 2) {
-    std::snprintf(dest, destLen, "%s & %s", parts[0], parts[1]);
-  }
+  // Order: 2nd, 3rd, 1st, home (home always empty — decorative 4th diamond).
+  std::snprintf(dest, destLen, "%c%c%c.", second ? '*' : '.', third ? '*' : '.',
+                first ? '*' : '.');
 }
 
 void formatMlbBatterPitcherLine(char* dest, std::size_t destLen, const MlbScores& m) {

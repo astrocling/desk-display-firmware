@@ -51,7 +51,12 @@ struct SportsMlbView {
   bool hasOpponentRuns;
   int opponentRuns;
   char countLine[kMlbCountLineLen];
+  /** Compact diamond mask from formatMlbBasesLine (2nd/3rd/1st/home). */
   char basesLine[kMlbBasesLineLen];
+  bool hasBases;
+  bool onFirst;
+  bool onSecond;
+  bool onThird;
   char batterPitcherLine[kMlbPitchersLineLen];
 };
 

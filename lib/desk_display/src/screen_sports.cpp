@@ -164,6 +164,10 @@ void ScreenSports::fillMlbView(SportsMlbView& out) const {
   out.hasOpponentRuns = m.hasOpponentRuns;
   out.opponentRuns = m.opponentRuns;
   formatMlbCountLine(out.countLine, sizeof(out.countLine), m);
+  out.hasBases = m.hasOnFirst || m.hasOnSecond || m.hasOnThird;
+  out.onFirst = m.hasOnFirst && m.onFirst;
+  out.onSecond = m.hasOnSecond && m.onSecond;
+  out.onThird = m.hasOnThird && m.onThird;
   formatMlbBasesLine(out.basesLine, sizeof(out.basesLine), m);
   formatMlbBatterPitcherLine(out.batterPitcherLine, sizeof(out.batterPitcherLine), m);
   out.showLiveScorebug = m.live && m.hasTeamAbbr && m.hasOpponentAbbr &&

@@ -366,13 +366,20 @@ void test_mlb_live_format_helpers(void) {
   m.onThird = false;
   char bases[32];
   formatMlbBasesLine(bases, sizeof(bases), m);
-  TEST_ASSERT_EQUAL_STRING("1st & 2nd", bases);
+  // Diamond mask: 2nd, 3rd, 1st, home (`*` occupied, `.` empty; home always `.`).
+  TEST_ASSERT_EQUAL_STRING("*.*.", bases);
 
   m.onFirst = true;
   m.onSecond = true;
   m.onThird = true;
   formatMlbBasesLine(bases, sizeof(bases), m);
-  TEST_ASSERT_EQUAL_STRING("Loaded", bases);
+  TEST_ASSERT_EQUAL_STRING("***.", bases);
+
+  m.onFirst = false;
+  m.onSecond = false;
+  m.onThird = false;
+  formatMlbBasesLine(bases, sizeof(bases), m);
+  TEST_ASSERT_EQUAL_STRING("....", bases);
 
   m.hasBatterName = true;
   std::strncpy(m.batterName, "A. Judge", sizeof(m.batterName) - 1);
