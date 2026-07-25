@@ -14,6 +14,7 @@ namespace {
 constexpr uint32_t kMagic = 0x52445253u;  // 'RDRS'
 constexpr uint16_t kVersion = 1;
 
+#pragma pack(push, 1)
 struct RadarPrefsRecord {
   uint32_t magic;
   uint16_t version;
@@ -24,6 +25,9 @@ struct RadarPrefsRecord {
   uint8_t demoMode;
   uint8_t reserved[3];
 };
+#pragma pack(pop)
+
+static_assert(sizeof(RadarPrefsRecord) == 14, "RadarPrefsRecord must be 14 bytes on disk");
 
 static bool isValidBoolByte(uint8_t v) { return v == 0 || v == 1; }
 
