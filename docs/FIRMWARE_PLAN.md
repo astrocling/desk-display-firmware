@@ -43,6 +43,8 @@ confirm the unit and touch/knob are working before writing anything custom.
   POSIX TZ strings per zone (not fixed UTC offsets) so DST transitions are automatic.
 - **Wi-Fi config (v1):** credentials hardcoded in a local `config.h` (git-ignored,
   not committed). Captive-portal first-run setup is a future improvement, not v1.
+- **Radar settings persistence:** sim uses `radar_prefs.bin` in CWD; dial stores
+  the same fields in ESP32 NVS namespace `radar` (keys `dcl`, `ap`, `as`, `rd`, `dm`).
 - **Network — two kinds of calls:**
   1. Direct to a public API: **adsb.lol only** (free, no key) — polled directly by
      the device due to its ~10s refresh need, bypassing the backend entirely

@@ -39,7 +39,7 @@ Mouse acts as capacitive touch for LVGL pointer input.
 
 ## Data
 
-Boots offline: loads JSON from `fixtures/` (captured from the live backend) so Weather, Timezones, and Sports have data before any network call happens. Radar loads `fixtures/map_context_dayton.json` for airport marks and Class D sample rings. Radar settings persist to `radar_prefs.bin` in the sim working directory (gitignored); they are loaded on boot and saved after each settings change.
+Boots offline: loads JSON from `fixtures/` (captured from the live backend) so Weather, Timezones, and Sports have data before any network call happens. Radar loads `fixtures/map_context_dayton.json` for airport marks and Class D sample rings. Radar settings persist to `radar_prefs.bin` in the sim working directory (gitignored); they are loaded on boot and saved after each settings change. On dial (ESP32), the same settings use NVS namespace `radar` via `loadRadarSettingsNvs` / `saveRadarSettingsNvs` (keys `dcl`, `ap`, `as`, `rd`, `dm`).
 
 **Radar settings** — long-press (`U`) while focused on Radar opens the overlay (declutter mode, map layers, demo toggle). Center-tap or **Done** closes it without leaving the screen. While settings are open, zoom is frozen and taps route to the overlay only (aircraft cannot be selected through the panel). Idle settle also closes settings.
 

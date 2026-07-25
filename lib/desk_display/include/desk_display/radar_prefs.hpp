@@ -9,7 +9,7 @@ constexpr const char* kRadarPrefsNvsNamespace = "radar";
 bool saveRadarSettingsToFile(const RadarSettings& s, const char* path);
 bool loadRadarSettingsFromFile(RadarSettings& out, const char* path);
 
-#if defined(ARDUINO)
+#if defined(ARDUINO) && defined(ESP32)
 bool saveRadarSettingsNvs(const RadarSettings& s);
 bool loadRadarSettingsNvs(RadarSettings& out);
 #endif

@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstring>
 
-#if defined(ARDUINO)
+#if defined(ARDUINO) && defined(ESP32)
 #include <Preferences.h>
 #endif
 
@@ -108,7 +108,7 @@ bool loadRadarSettingsFromFile(RadarSettings& out, const char* path) {
   return true;
 }
 
-#if defined(ARDUINO)
+#if defined(ARDUINO) && defined(ESP32)
 
 bool saveRadarSettingsNvs(const RadarSettings& s) {
   Preferences prefs;
