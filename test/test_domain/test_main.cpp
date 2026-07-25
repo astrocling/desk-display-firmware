@@ -383,11 +383,46 @@ void test_mlb_live_format_helpers(void) {
 
   m.hasBatterName = true;
   std::strncpy(m.batterName, "A. Judge", sizeof(m.batterName) - 1);
+  m.hasBatterAvg = true;
+  std::strncpy(m.batterAvg, ".311", sizeof(m.batterAvg) - 1);
+  m.hasBatterSummary = true;
+  std::strncpy(m.batterSummary, "1-3, BB", sizeof(m.batterSummary) - 1);
   m.hasPitcherName = true;
   std::strncpy(m.pitcherName, "F. Valdez", sizeof(m.pitcherName) - 1);
-  char names[72];
+  m.hasPitcherEra = true;
+  std::strncpy(m.pitcherEra, "2.85", sizeof(m.pitcherEra) - 1);
+  m.hasPitcherSummary = true;
+  std::strncpy(m.pitcherSummary, "5.0 IP, 2 ER", sizeof(m.pitcherSummary) - 1);
+  char names[128];
   formatMlbBatterPitcherLine(names, sizeof(names), m);
-  TEST_ASSERT_EQUAL_STRING("A. Judge - F. Valdez", names);
+  TEST_ASSERT_EQUAL_STRING(
+      "AB: A. Judge .311 · 1-3, BB\nP: F. Valdez 2.85 · 5.0 IP, 2 ER", names);
+
+  MlbScores m2{};
+  m2.hasBatterName = true;
+  std::strncpy(m2.batterName, "A. Judge", sizeof(m2.batterName) - 1);
+  m2.hasBatterAvg = true;
+  std::strncpy(m2.batterAvg, ".311", sizeof(m2.batterAvg) - 1);
+  formatMlbBatterPitcherLine(names, sizeof(names), m2);
+  TEST_ASSERT_EQUAL_STRING("AB: A. Judge .311", names);
+
+  MlbScores m3{};
+  m3.hasBatterName = true;
+  std::strncpy(m3.batterName, "A. Judge", sizeof(m3.batterName) - 1);
+  m3.hasBatterSummary = true;
+  std::strncpy(m3.batterSummary, "1-3, BB", sizeof(m3.batterSummary) - 1);
+  formatMlbBatterPitcherLine(names, sizeof(names), m3);
+  TEST_ASSERT_EQUAL_STRING("AB: A. Judge · 1-3, BB", names);
+
+  MlbScores m4{};
+  m4.hasPitcherName = true;
+  std::strncpy(m4.pitcherName, "F. Valdez", sizeof(m4.pitcherName) - 1);
+  m4.hasPitcherEra = true;
+  std::strncpy(m4.pitcherEra, "2.85", sizeof(m4.pitcherEra) - 1);
+  m4.hasPitcherSummary = true;
+  std::strncpy(m4.pitcherSummary, "5.0 IP, 2 ER", sizeof(m4.pitcherSummary) - 1);
+  formatMlbBatterPitcherLine(names, sizeof(names), m4);
+  TEST_ASSERT_EQUAL_STRING("P: F. Valdez 2.85 · 5.0 IP, 2 ER", names);
 }
 
 void test_radar_offset_and_distance(void) {

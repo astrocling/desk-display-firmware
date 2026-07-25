@@ -189,11 +189,35 @@ bool parseScores(const char* json, Scores& out) {
     copyStr(out.mlb.batterName, sizeof(out.mlb.batterName),
             mlb["batterName"].as<const char*>());
   }
+  out.mlb.hasBatterAvg = false;
+  if (!mlb["batterAvg"].isNull() && mlb["batterAvg"].is<const char*>()) {
+    out.mlb.hasBatterAvg = true;
+    copyStr(out.mlb.batterAvg, sizeof(out.mlb.batterAvg),
+            mlb["batterAvg"].as<const char*>());
+  }
+  out.mlb.hasBatterSummary = false;
+  if (!mlb["batterSummary"].isNull() && mlb["batterSummary"].is<const char*>()) {
+    out.mlb.hasBatterSummary = true;
+    copyStr(out.mlb.batterSummary, sizeof(out.mlb.batterSummary),
+            mlb["batterSummary"].as<const char*>());
+  }
   out.mlb.hasPitcherName = false;
   if (!mlb["pitcherName"].isNull() && mlb["pitcherName"].is<const char*>()) {
     out.mlb.hasPitcherName = true;
     copyStr(out.mlb.pitcherName, sizeof(out.mlb.pitcherName),
             mlb["pitcherName"].as<const char*>());
+  }
+  out.mlb.hasPitcherEra = false;
+  if (!mlb["pitcherEra"].isNull() && mlb["pitcherEra"].is<const char*>()) {
+    out.mlb.hasPitcherEra = true;
+    copyStr(out.mlb.pitcherEra, sizeof(out.mlb.pitcherEra),
+            mlb["pitcherEra"].as<const char*>());
+  }
+  out.mlb.hasPitcherSummary = false;
+  if (!mlb["pitcherSummary"].isNull() && mlb["pitcherSummary"].is<const char*>()) {
+    out.mlb.hasPitcherSummary = true;
+    copyStr(out.mlb.pitcherSummary, sizeof(out.mlb.pitcherSummary),
+            mlb["pitcherSummary"].as<const char*>());
   }
 
   if (doc["flagstand"].is<JsonObjectConst>()) {

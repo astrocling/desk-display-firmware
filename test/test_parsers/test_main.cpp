@@ -128,7 +128,8 @@ void test_parse_scores_live_situation(void) {
       R"("teamAbbr":"HOU","opponentAbbr":"CHW","homeAway":"away",)"
       R"("teamRuns":0,"opponentRuns":3,"balls":2,"strikes":1,"outs":1,)"
       R"("onFirst":false,"onSecond":true,"onThird":false,)"
-      R"("batterName":"M. Murakami","pitcherName":"A. Blubaugh"},)"
+      R"("batterName":"M. Murakami","pitcherName":"A. Blubaugh",)"
+      R"("batterAvg":".222","batterSummary":"1-3, BB","pitcherEra":"1.93","pitcherSummary":"0.2 IP, 0 ER"},)"
       R"("flagstand":{"lastResult":null,"nextRace":null}})";
 
   Scores s{};
@@ -144,6 +145,14 @@ void test_parse_scores_live_situation(void) {
   TEST_ASSERT_TRUE(s.mlb.onSecond);
   TEST_ASSERT_TRUE(s.mlb.hasBatterName);
   TEST_ASSERT_EQUAL_STRING("M. Murakami", s.mlb.batterName);
+  TEST_ASSERT_TRUE(s.mlb.hasBatterAvg);
+  TEST_ASSERT_EQUAL_STRING(".222", s.mlb.batterAvg);
+  TEST_ASSERT_TRUE(s.mlb.hasBatterSummary);
+  TEST_ASSERT_EQUAL_STRING("1-3, BB", s.mlb.batterSummary);
+  TEST_ASSERT_TRUE(s.mlb.hasPitcherEra);
+  TEST_ASSERT_EQUAL_STRING("1.93", s.mlb.pitcherEra);
+  TEST_ASSERT_TRUE(s.mlb.hasPitcherSummary);
+  TEST_ASSERT_EQUAL_STRING("0.2 IP, 0 ER", s.mlb.pitcherSummary);
 }
 
 void test_parse_scores_flagstand_next_with_status(void) {

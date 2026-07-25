@@ -164,9 +164,17 @@ void test_mlb_live_scorebug_view(void) {
   s.mlb.hasOnThird = true;
   s.mlb.onThird = false;
   s.mlb.hasBatterName = true;
-  std::strncpy(s.mlb.batterName, "M. Murakami", sizeof(s.mlb.batterName) - 1);
+  std::strncpy(s.mlb.batterName, "A. Judge", sizeof(s.mlb.batterName) - 1);
+  s.mlb.hasBatterAvg = true;
+  std::strncpy(s.mlb.batterAvg, ".311", sizeof(s.mlb.batterAvg) - 1);
+  s.mlb.hasBatterSummary = true;
+  std::strncpy(s.mlb.batterSummary, "1-3, BB", sizeof(s.mlb.batterSummary) - 1);
   s.mlb.hasPitcherName = true;
-  std::strncpy(s.mlb.pitcherName, "A. Blubaugh", sizeof(s.mlb.pitcherName) - 1);
+  std::strncpy(s.mlb.pitcherName, "F. Valdez", sizeof(s.mlb.pitcherName) - 1);
+  s.mlb.hasPitcherEra = true;
+  std::strncpy(s.mlb.pitcherEra, "2.85", sizeof(s.mlb.pitcherEra) - 1);
+  s.mlb.hasPitcherSummary = true;
+  std::strncpy(s.mlb.pitcherSummary, "5.0 IP, 2 ER", sizeof(s.mlb.pitcherSummary) - 1);
 
   g_screen.bind(s);
   SportsView v = g_screen.view();
@@ -178,7 +186,9 @@ void test_mlb_live_scorebug_view(void) {
   TEST_ASSERT_FALSE(v.mlb.onFirst);
   TEST_ASSERT_FALSE(v.mlb.onSecond);
   TEST_ASSERT_FALSE(v.mlb.onThird);
-  TEST_ASSERT_EQUAL_STRING("M. Murakami - A. Blubaugh", v.mlb.batterPitcherLine);
+  TEST_ASSERT_EQUAL_STRING(
+      "AB: A. Judge .311 · 1-3, BB\nP: F. Valdez 2.85 · 5.0 IP, 2 ER",
+      v.mlb.batterPitcherLine);
 
   s.mlb.onFirst = true;
   s.mlb.onThird = true;

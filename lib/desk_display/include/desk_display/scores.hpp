@@ -14,6 +14,8 @@ constexpr std::size_t kMaxMlbRecord = 16;
 constexpr std::size_t kMaxMlbStanding = 48;
 constexpr std::size_t kMaxMlbAbbr = 8;
 constexpr std::size_t kMaxMlbPlayerName = 32;
+constexpr std::size_t kMaxMlbStat = 8;
+constexpr std::size_t kMaxMlbPlayerSummary = 48;
 constexpr std::size_t kMaxRaceId = 48;
 constexpr std::size_t kMaxRaceName = 96;
 constexpr std::size_t kMaxTrackName = 96;
@@ -64,8 +66,16 @@ struct MlbScores {
   bool onThird;
   bool hasBatterName;
   char batterName[kMaxMlbPlayerName];
+  bool hasBatterAvg;
+  char batterAvg[kMaxMlbStat];
+  bool hasBatterSummary;
+  char batterSummary[kMaxMlbPlayerSummary];
   bool hasPitcherName;
   char pitcherName[kMaxMlbPlayerName];
+  bool hasPitcherEra;
+  char pitcherEra[kMaxMlbStat];
+  bool hasPitcherSummary;
+  char pitcherSummary[kMaxMlbPlayerSummary];
 };
 
 struct FlagstandRace {

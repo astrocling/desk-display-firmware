@@ -18,6 +18,41 @@ void copyStr(char* dest, std::size_t destLen, const char* src) {
   dest[destLen - 1] = '\0';
 }
 
+void appendRoleLine(char* dest, std::size_t destLen, const char* prefix, const char* name,
+                    const char* seasonStat, const char* summary) {
+  if (!dest || destLen == 0 || !name || !name[0]) {
+    return;
+  }
+
+  std::size_t offset = std::strlen(dest);
+  char* p = dest + offset;
+  std::size_t rem = destLen - offset;
+
+  int n = std::snprintf(p, rem, "%s%s", prefix, name);
+  if (n < 0 || static_cast<std::size_t>(n) >= rem) {
+    dest[destLen - 1] = '\0';
+    return;
+  }
+  offset += static_cast<std::size_t>(n);
+  p = dest + offset;
+  rem = destLen - offset;
+
+  if (seasonStat && seasonStat[0]) {
+    n = std::snprintf(p, rem, " %s", seasonStat);
+    if (n < 0 || static_cast<std::size_t>(n) >= rem) {
+      dest[destLen - 1] = '\0';
+      return;
+    }
+    offset += static_cast<std::size_t>(n);
+    p = dest + offset;
+    rem = destLen - offset;
+  }
+
+  if (summary && summary[0]) {
+    std::snprintf(p, rem, " · %s", summary);
+  }
+}
+
 }  // namespace
 
 void formatMlbCountLine(char* dest, std::size_t destLen, const MlbScores& m) {
@@ -70,15 +105,26 @@ void formatMlbBatterPitcherLine(char* dest, std::size_t destLen, const MlbScores
   dest[0] = '\0';
 
   const char* batter = (m.hasBatterName && m.batterName[0]) ? m.batterName : nullptr;
-  const char* pitcher =
-      (m.hasPitcherName && m.pitcherName[0]) ? m.pitcherName : nullptr;
+  const char* batterAvg = (m.hasBatterAvg && m.batterAvg[0]) ? m.batterAvg : nullptr;
+  const char* batterSummary =
+      (m.hasBatterSummary && m.batterSummary[0]) ? m.batterSummary : nullptr;
+  const char* pitcher = (m.hasPitcherName && m.pitcherName[0]) ? m.pitcherName : nullptr;
+  const char* pitcherEra = (m.hasPitcherEra && m.pitcherEra[0]) ? m.pitcherEra : nullptr;
+  const char* pitcherSummary =
+      (m.hasPitcherSummary && m.pitcherSummary[0]) ? m.pitcherSummary : nullptr;
 
-  if (batter && pitcher) {
-    std::snprintf(dest, destLen, "%s - %s", batter, pitcher);
-  } else if (batter) {
-    copyStr(dest, destLen, batter);
-  } else if (pitcher) {
-    copyStr(dest, destLen, pitcher);
+  if (batter) {
+    appendRoleLine(dest, destLen, "AB: ", batter, batterAvg, batterSummary);
+  }
+  if (pitcher) {
+    if (batter && dest[0]) {
+      const std::size_t len = std::strlen(dest);
+      if (len + 1 < destLen) {
+        dest[len] = '\n';
+        dest[len + 1] = '\0';
+      }
+    }
+    appendRoleLine(dest, destLen, "P: ", pitcher, pitcherEra, pitcherSummary);
   }
 }
 
