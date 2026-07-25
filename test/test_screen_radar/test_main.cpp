@@ -11,6 +11,8 @@
 #include "desk_display/airport.hpp"
 #include "desk_display/map_context.hpp"
 #include "desk_display/radar.hpp"
+#include "desk_display/radar_prefs.hpp"
+#include "desk_display/radar_settings.hpp"
 #include "desk_display/screen_radar.hpp"
 #include "fixture_loader.hpp"
 
@@ -687,6 +689,37 @@ void test_radar_settings_gate_airspace_and_roads(void) {
   TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(v.highwayCount));
 }
 
+void test_radar_prefs_round_trip(void) {
+  RadarSettings in = radarSettingsFactoryDefaults();
+  in.declutter = RadarDeclutterMode::TargetOnly;
+  in.showRoads = false;
+  in.demoMode = true;
+  const char* path = "radar_prefs_test.bin";
+  TEST_ASSERT_TRUE(saveRadarSettingsToFile(in, path));
+  RadarSettings out{};
+  TEST_ASSERT_TRUE(loadRadarSettingsFromFile(out, path));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(in.declutter),
+                          static_cast<uint8_t>(out.declutter));
+  TEST_ASSERT_FALSE(out.showRoads);
+  TEST_ASSERT_TRUE(out.demoMode);
+  std::remove(path);
+}
+
+void test_radar_prefs_corrupt_uses_defaults(void) {
+  const char* path = "radar_prefs_bad.bin";
+  FILE* f = std::fopen(path, "wb");
+  TEST_ASSERT_NOT_NULL(f);
+  const char junk[] = "nope";
+  std::fwrite(junk, 1, sizeof(junk), f);
+  std::fclose(f);
+  RadarSettings out{};
+  TEST_ASSERT_FALSE(loadRadarSettingsFromFile(out, path));
+  const auto d = radarSettingsFactoryDefaults();
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(d.declutter),
+                          static_cast<uint8_t>(out.declutter));
+  std::remove(path);
+}
+
 void test_radar_idle_settle_closes_settings(void) {
   ScreenRadar screen;
   screen.openSettings();
@@ -802,6 +835,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_idle_settle_clears_selection_keeps_range);
   RUN_TEST(test_radar_settings_gate_airports);
   RUN_TEST(test_radar_settings_gate_airspace_and_roads);
+  RUN_TEST(test_radar_prefs_round_trip);
+  RUN_TEST(test_radar_prefs_corrupt_uses_defaults);
   RUN_TEST(test_radar_idle_settle_closes_settings);
   RUN_TEST(test_radar_set_pois_adds_home_mark);
   RUN_TEST(test_radar_bind_map_context_projects_airport);

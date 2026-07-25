@@ -25,6 +25,7 @@ credentials.json
 build/
 dist/
 *.bin
+radar_prefs.bin
 *.elf
 *.hex
 *.map
