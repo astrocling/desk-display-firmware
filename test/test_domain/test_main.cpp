@@ -446,6 +446,18 @@ void test_mlb_live_format_helpers(void) {
   TEST_ASSERT_EQUAL_STRING("P: F. Valdez 2.85 - 5.0 IP, 2 ER, 4 H, 6 K, BB", names);
 }
 
+void test_radar_settings_hit_rect_mapping(void) {
+  using desk_display::radarSettingsHitContains;
+  using desk_display::radarSettingsHitRectFromArea;
+  const auto rect = radarSettingsHitRectFromArea(100, 200, 159, 227);
+  TEST_ASSERT_TRUE(radarSettingsHitContains(rect, 120.0f, 210.0f));
+  TEST_ASSERT_FALSE(radarSettingsHitContains(rect, 99.0f, 210.0f));
+  TEST_ASSERT_FALSE(radarSettingsHitContains(rect, 160.0f, 210.0f));
+  // Pre-layout zero-area coords must not register taps.
+  const auto empty = radarSettingsHitRectFromArea(0, 0, -1, -1);
+  TEST_ASSERT_FALSE(radarSettingsHitContains(empty, 0.0f, 0.0f));
+}
+
 void test_radar_settings_defaults(void) {
   const auto s = desk_display::radarSettingsFactoryDefaults();
   TEST_ASSERT_EQUAL_UINT8(
@@ -513,6 +525,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_format_radar_tag_line2_omits_missing);
   RUN_TEST(test_format_radar_dense_and_line3);
   RUN_TEST(test_format_radar_tag_line4);
+  RUN_TEST(test_radar_settings_hit_rect_mapping);
   RUN_TEST(test_radar_settings_defaults);
   RUN_TEST(test_radar_unselected_label_modes);
   RUN_TEST(test_radar_offset_and_distance);

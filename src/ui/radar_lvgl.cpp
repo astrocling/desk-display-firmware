@@ -66,9 +66,16 @@ struct SettingsHitRect {
   SettingsHitKind kind;
 };
 
+struct SettingsHitPending {
+  lv_obj_t* obj;
+  SettingsHitKind kind;
+};
+
 constexpr int kMaxSettingsHits = 12;
 SettingsHitRect g_settings_hits[kMaxSettingsHits];
 int g_settings_hit_count = 0;
+SettingsHitPending g_settings_hit_pending[kMaxSettingsHits];
+int g_settings_hit_pending_count = 0;
 
 lv_obj_t* g_settings_root = nullptr;
 desk_display::RadarDeclutterMode g_cached_declutter =
@@ -137,19 +144,34 @@ void clear_settings_hits() {
   }
 }
 
-void add_settings_hit(lv_obj_t* obj, SettingsHitKind kind) {
-  if (!obj || g_settings_hit_count >= kMaxSettingsHits) {
+void register_settings_hit(lv_obj_t* obj, SettingsHitKind kind) {
+  if (!obj || g_settings_hit_pending_count >= kMaxSettingsHits) {
     return;
   }
-  lv_area_t area{};
-  lv_obj_get_coords(obj, &area);
-  SettingsHitRect& hit = g_settings_hits[g_settings_hit_count++];
-  hit.valid = true;
-  hit.x0 = static_cast<float>(area.x1);
-  hit.y0 = static_cast<float>(area.y1);
-  hit.x1 = static_cast<float>(area.x2 + 1);
-  hit.y1 = static_cast<float>(area.y2 + 1);
-  hit.kind = kind;
+  g_settings_hit_pending[g_settings_hit_pending_count++] = {obj, kind};
+}
+
+void resolve_settings_hits() {
+  clear_settings_hits();
+  for (int i = 0; i < g_settings_hit_pending_count; ++i) {
+    const SettingsHitPending& pending = g_settings_hit_pending[i];
+    if (!pending.obj || g_settings_hit_count >= kMaxSettingsHits) {
+      continue;
+    }
+    lv_area_t area{};
+    lv_obj_get_coords(pending.obj, &area);
+    const desk_display::RadarSettingsHitRect rect =
+        desk_display::radarSettingsHitRectFromArea(area.x1, area.y1, area.x2,
+                                                   area.y2);
+    SettingsHitRect& hit = g_settings_hits[g_settings_hit_count++];
+    hit.valid = true;
+    hit.x0 = rect.x0;
+    hit.y0 = rect.y0;
+    hit.x1 = rect.x1;
+    hit.y1 = rect.y1;
+    hit.kind = pending.kind;
+  }
+  g_settings_hit_pending_count = 0;
 }
 
 bool point_in_settings_hit(float px, float py, const SettingsHitRect& hit) {
@@ -219,16 +241,22 @@ lv_obj_t* make_chip(lv_obj_t* parent, const char* text, lv_coord_t x, lv_coord_t
   return chip;
 }
 
-void destroy_settings_overlay() {
-  if (g_settings_root) {
-    lv_obj_del(g_settings_root);
-    g_settings_root = nullptr;
-  }
+void drop_settings_overlay_cache() {
+  g_settings_root = nullptr;
+  g_settings_hit_pending_count = 0;
   clear_settings_hits();
   g_cached_settings_open = false;
 }
 
+void destroy_settings_overlay() {
+  if (g_settings_root) {
+    lv_obj_del(g_settings_root);
+  }
+  drop_settings_overlay_cache();
+}
+
 void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) {
+  g_settings_hit_pending_count = 0;
   clear_settings_hits();
 
   const lv_coord_t pw = lv_obj_get_content_width(parent);
@@ -269,7 +297,7 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
   lv_obj_set_style_text_color(doneLab, rgb(kSettingsChipOn), 0);
   lv_obj_center(doneLab);
   lv_obj_clear_flag(doneLab, LV_OBJ_FLAG_CLICKABLE);
-  add_settings_hit(done, SettingsHitKind::Done);
+  register_settings_hit(done, SettingsHitKind::Done);
 
   lv_coord_t y = kSettingsPad + 36;
   make_section_label(g_settings_root, "DECLUTTER", y);
@@ -288,17 +316,17 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
 
   lv_obj_t* chipTarget = make_chip(g_settings_root, "Target", chipX, y, chipW,
                                    declutterTarget, false);
-  add_settings_hit(chipTarget, SettingsHitKind::DeclutterTarget);
+  register_settings_hit(chipTarget, SettingsHitKind::DeclutterTarget);
   chipX += chipW + kSettingsChipGap;
 
   lv_obj_t* chipCallsign = make_chip(g_settings_root, "Callsign", chipX, y, chipW,
                                      declutterCallsign, false);
-  add_settings_hit(chipCallsign, SettingsHitKind::DeclutterCallsign);
+  register_settings_hit(chipCallsign, SettingsHitKind::DeclutterCallsign);
   chipX += chipW + kSettingsChipGap;
 
   lv_obj_t* chipTag = make_chip(g_settings_root, "Tag", chipX, y, chipW,
                                 declutterTag, false);
-  add_settings_hit(chipTag, SettingsHitKind::DeclutterTag);
+  register_settings_hit(chipTag, SettingsHitKind::DeclutterTag);
 
   y += kSettingsChipH + kSettingsSectionGap;
   make_section_label(g_settings_root, "MAP CLUTTER", y);
@@ -308,18 +336,18 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
   lv_obj_t* chipAirports =
       make_chip(g_settings_root, "Airports", chipX, y, chipW,
                 v.settings.showAirports, true);
-  add_settings_hit(chipAirports, SettingsHitKind::MapAirports);
+  register_settings_hit(chipAirports, SettingsHitKind::MapAirports);
   chipX += chipW + kSettingsChipGap;
 
   lv_obj_t* chipAirspace =
       make_chip(g_settings_root, "Airspace", chipX, y, chipW,
                 v.settings.showAirspace, true);
-  add_settings_hit(chipAirspace, SettingsHitKind::MapAirspace);
+  register_settings_hit(chipAirspace, SettingsHitKind::MapAirspace);
   chipX += chipW + kSettingsChipGap;
 
   lv_obj_t* chipRoads = make_chip(g_settings_root, "Roads", chipX, y, chipW,
                                   v.settings.showRoads, true);
-  add_settings_hit(chipRoads, SettingsHitKind::MapRoads);
+  register_settings_hit(chipRoads, SettingsHitKind::MapRoads);
 
   y += kSettingsChipH + kSettingsSectionGap;
   lv_obj_t* demoLabel = lv_label_create(g_settings_root);
@@ -363,8 +391,10 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
     lv_obj_set_style_text_color(offLab, rgb(kSettingsChipOn), 0);
     lv_obj_set_style_text_color(onLab, rgb(desk_display::theme::kDim), 0);
   }
-  add_settings_hit(demoToggle, SettingsHitKind::DemoToggle);
+  register_settings_hit(demoToggle, SettingsHitKind::DemoToggle);
 
+  lv_obj_update_layout(g_settings_root);
+  resolve_settings_hits();
   cache_settings_overlay_state(v);
 }
 
@@ -738,7 +768,7 @@ void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
   // round clip doesn't swallow callsign / alt / type lines.
   constexpr lv_coord_t kLeaderLen = 18;
   const bool hasLine4 = selected && tagLine4 && tagLine4[0] != '\0';
-  const lv_coord_t kTagMargin = (selected || hasLine4) ? 60 : 36;
+  const lv_coord_t kTagMargin = hasLine4 ? 60 : (selected ? 48 : 36);
   const lv_coord_t cx = g_disc_px / 2;
   const lv_coord_t cy = g_disc_px / 2;
   const float dx = static_cast<float>(cx - bx);
@@ -934,7 +964,7 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
 
         // Mirror draw_blip_tag placement for hit boxes.
         constexpr lv_coord_t kLeaderLen = 18;
-        const lv_coord_t kTagMargin = (selected || hasLine4) ? 60 : 36;
+        const lv_coord_t kTagMargin = hasLine4 ? 60 : (selected ? 48 : 36);
         const float tdx = static_cast<float>(cx - bx);
         const float tdy = static_cast<float>(cy - by);
         const float tdist = std::sqrt(tdx * tdx + tdy * tdy);
@@ -999,7 +1029,7 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
 }
 
 void clear_animate_cache() {
-  destroy_settings_overlay();
+  drop_settings_overlay_cache();
   g_parent = nullptr;
   g_hdr = nullptr;
   g_disc = nullptr;

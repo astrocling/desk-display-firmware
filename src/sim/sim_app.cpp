@@ -819,6 +819,7 @@ void SimApp::handle_input() {
   if (keys.center_tap) {
     if (radar_settings_ui) {
       radar_.closeSettings();
+      nav_.idle_reset();
     } else {
       if (nav_.mode() == desk_display::NavMode::Focused &&
           nav_.focused() == desk_display::Screen::Radar) {
@@ -829,11 +830,21 @@ void SimApp::handle_input() {
   }
   if (keys.tap) {
     if (radar_settings_ui) {
-      const bool prev_demo = radar_.settings().demoMode;
+      const auto prev_settings = radar_.settings();
+      const bool prev_demo = prev_settings.demoMode;
       if (desk_ui::radar_lvgl_settings_hit(keys.tap_x, keys.tap_y, radar_)) {
-        persist_radar_prefs();
-        if (radar_.settings().demoMode && !prev_demo) {
-          bind_demo_adsb_fixture();
+        nav_.idle_reset();
+        const auto& cur = radar_.settings();
+        const bool values_changed =
+            cur.declutter != prev_settings.declutter ||
+            cur.showAirports != prev_settings.showAirports ||
+            cur.showAirspace != prev_settings.showAirspace ||
+            cur.showRoads != prev_settings.showRoads || cur.demoMode != prev_demo;
+        if (values_changed) {
+          persist_radar_prefs();
+          if (cur.demoMode && !prev_demo) {
+            bind_demo_adsb_fixture();
+          }
         }
       }
     } else {
@@ -852,6 +863,9 @@ void SimApp::handle_input() {
   if (keys.long_press && !radar_settings_ui) {
     if (nav_.mode() == desk_display::NavMode::Focused) {
       on_long_press_focused();
+      if (nav_.focused() == desk_display::Screen::Radar) {
+        nav_.idle_reset();
+      }
     }
     nav_.on_long_press();
   }
