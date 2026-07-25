@@ -38,6 +38,47 @@ constexpr uint32_t kPoiMarkColor = 0xAAAAAA;
 constexpr lv_coord_t kPoiMarkPx = 6;
 constexpr float kStaticHitRadiusPx = 28.0f;
 
+constexpr uint32_t kSettingsPanelBg = 0x0B0F14;
+constexpr uint32_t kSettingsChipBorder = 0x006900;
+constexpr uint32_t kSettingsChipOn = 0x00FF00;
+constexpr lv_coord_t kSettingsPad = 16;
+constexpr lv_coord_t kSettingsChipH = 28;
+constexpr lv_coord_t kSettingsChipGap = 8;
+constexpr lv_coord_t kSettingsSectionGap = 12;
+
+enum class SettingsHitKind : uint8_t {
+  Done,
+  DeclutterTarget,
+  DeclutterCallsign,
+  DeclutterTag,
+  MapAirports,
+  MapAirspace,
+  MapRoads,
+  DemoToggle,
+};
+
+struct SettingsHitRect {
+  bool valid;
+  float x0;
+  float y0;
+  float x1;
+  float y1;
+  SettingsHitKind kind;
+};
+
+constexpr int kMaxSettingsHits = 12;
+SettingsHitRect g_settings_hits[kMaxSettingsHits];
+int g_settings_hit_count = 0;
+
+lv_obj_t* g_settings_root = nullptr;
+desk_display::RadarDeclutterMode g_cached_declutter =
+    desk_display::RadarDeclutterMode::TargetTag;
+bool g_cached_show_airports = true;
+bool g_cached_show_airspace = true;
+bool g_cached_show_roads = true;
+bool g_cached_demo_mode = false;
+bool g_cached_settings_open = false;
+
 // Compact phosphor trail — enough to read motion without washing the map.
 constexpr float kTrailArcDeg = 12.0f;
 constexpr int kTrailSlices = 8;
@@ -86,6 +127,264 @@ BlipHitTarget g_hit_targets[kMaxDots];
 void clear_hit_targets() {
   for (int i = 0; i < kMaxDots; ++i) {
     g_hit_targets[i].valid = false;
+  }
+}
+
+void clear_settings_hits() {
+  g_settings_hit_count = 0;
+  for (int i = 0; i < kMaxSettingsHits; ++i) {
+    g_settings_hits[i].valid = false;
+  }
+}
+
+void add_settings_hit(lv_obj_t* obj, SettingsHitKind kind) {
+  if (!obj || g_settings_hit_count >= kMaxSettingsHits) {
+    return;
+  }
+  lv_area_t area{};
+  lv_obj_get_coords(obj, &area);
+  SettingsHitRect& hit = g_settings_hits[g_settings_hit_count++];
+  hit.valid = true;
+  hit.x0 = static_cast<float>(area.x1);
+  hit.y0 = static_cast<float>(area.y1);
+  hit.x1 = static_cast<float>(area.x2 + 1);
+  hit.y1 = static_cast<float>(area.y2 + 1);
+  hit.kind = kind;
+}
+
+bool point_in_settings_hit(float px, float py, const SettingsHitRect& hit) {
+  return hit.valid && px >= hit.x0 && px < hit.x1 && py >= hit.y0 && py < hit.y1;
+}
+
+void cache_settings_overlay_state(const desk_display::RadarView& v) {
+  g_cached_settings_open = v.settingsOpen;
+  g_cached_declutter = v.settings.declutter;
+  g_cached_show_airports = v.settings.showAirports;
+  g_cached_show_airspace = v.settings.showAirspace;
+  g_cached_show_roads = v.settings.showRoads;
+  g_cached_demo_mode = v.settings.demoMode;
+}
+
+bool settings_overlay_needs_rebuild(const desk_display::RadarView& v) {
+  return v.settings.declutter != g_cached_declutter ||
+         v.settings.showAirports != g_cached_show_airports ||
+         v.settings.showAirspace != g_cached_show_airspace ||
+         v.settings.showRoads != g_cached_show_roads ||
+         v.settings.demoMode != g_cached_demo_mode;
+}
+
+lv_obj_t* make_section_label(lv_obj_t* parent, const char* text, lv_coord_t y) {
+  lv_obj_t* lab = lv_label_create(parent);
+  lv_label_set_text(lab, text);
+  lv_obj_set_style_text_font(lab, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(lab, rgb(desk_display::theme::kDim), 0);
+  lv_obj_set_pos(lab, kSettingsPad, y);
+  lv_obj_clear_flag(lab, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(lab, LV_OBJ_FLAG_SCROLLABLE);
+  return lab;
+}
+
+lv_obj_t* make_chip(lv_obj_t* parent, const char* text, lv_coord_t x, lv_coord_t y,
+                    lv_coord_t w, bool active, bool greenActive) {
+  lv_obj_t* chip = lv_obj_create(parent);
+  lv_obj_set_size(chip, w, kSettingsChipH);
+  lv_obj_set_pos(chip, x, y);
+  lv_obj_set_style_radius(chip, 4, 0);
+  lv_obj_set_style_pad_all(chip, 0, 0);
+  lv_obj_set_style_border_width(chip, 1, 0);
+  lv_obj_clear_flag(chip, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+
+  const uint32_t onColor = greenActive ? kSettingsChipOn : kSettingsChipBorder;
+  if (active) {
+    lv_obj_set_style_bg_color(chip, rgb(onColor), 0);
+    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(chip, rgb(onColor), 0);
+  } else {
+    lv_obj_set_style_bg_opa(chip, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(chip, rgb(desk_display::theme::kDim), 0);
+  }
+
+  lv_obj_t* lab = lv_label_create(chip);
+  lv_label_set_text(lab, text);
+  lv_obj_set_style_text_font(lab, &lv_font_montserrat_12, 0);
+  if (active) {
+    lv_obj_set_style_text_color(lab, rgb(0x0B0F14), 0);
+  } else {
+    lv_obj_set_style_text_color(lab, rgb(desk_display::theme::kDim), 0);
+  }
+  lv_obj_center(lab);
+  lv_obj_clear_flag(lab, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(lab, LV_OBJ_FLAG_SCROLLABLE);
+  return chip;
+}
+
+void destroy_settings_overlay() {
+  if (g_settings_root) {
+    lv_obj_del(g_settings_root);
+    g_settings_root = nullptr;
+  }
+  clear_settings_hits();
+  g_cached_settings_open = false;
+}
+
+void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) {
+  clear_settings_hits();
+
+  const lv_coord_t pw = lv_obj_get_content_width(parent);
+  const lv_coord_t ph = lv_obj_get_content_height(parent);
+
+  g_settings_root = lv_obj_create(parent);
+  lv_obj_set_size(g_settings_root, pw, ph);
+  lv_obj_set_pos(g_settings_root, 0, 0);
+  lv_obj_set_style_bg_color(g_settings_root, rgb(kSettingsPanelBg), 0);
+  lv_obj_set_style_bg_opa(g_settings_root, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(g_settings_root, 0, 0);
+  lv_obj_set_style_pad_all(g_settings_root, 0, 0);
+  lv_obj_clear_flag(g_settings_root, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(g_settings_root, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_move_foreground(g_settings_root);
+
+  lv_obj_t* title = lv_label_create(g_settings_root);
+  lv_label_set_text(title, "Radar Settings");
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(title, rgb(0xFFFFFF), 0);
+  lv_obj_set_pos(title, kSettingsPad, kSettingsPad);
+  lv_obj_clear_flag(title, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(title, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t* done = lv_obj_create(g_settings_root);
+  lv_obj_set_size(done, 56, kSettingsChipH);
+  lv_obj_align(done, LV_ALIGN_TOP_RIGHT, -kSettingsPad, kSettingsPad);
+  lv_obj_set_style_radius(done, 4, 0);
+  lv_obj_set_style_bg_opa(done, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(done, 1, 0);
+  lv_obj_set_style_border_color(done, rgb(kSettingsChipBorder), 0);
+  lv_obj_set_style_pad_all(done, 0, 0);
+  lv_obj_clear_flag(done, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(done, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_t* doneLab = lv_label_create(done);
+  lv_label_set_text(doneLab, "Done");
+  lv_obj_set_style_text_font(doneLab, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(doneLab, rgb(kSettingsChipOn), 0);
+  lv_obj_center(doneLab);
+  lv_obj_clear_flag(doneLab, LV_OBJ_FLAG_CLICKABLE);
+  add_settings_hit(done, SettingsHitKind::Done);
+
+  lv_coord_t y = kSettingsPad + 36;
+  make_section_label(g_settings_root, "DECLUTTER", y);
+  y += 20;
+
+  const lv_coord_t chipW =
+      (pw - kSettingsPad * 2 - kSettingsChipGap * 2) / 3;
+  lv_coord_t chipX = kSettingsPad;
+
+  const bool declutterTarget =
+      v.settings.declutter == desk_display::RadarDeclutterMode::TargetOnly;
+  const bool declutterCallsign =
+      v.settings.declutter == desk_display::RadarDeclutterMode::TargetCallsign;
+  const bool declutterTag =
+      v.settings.declutter == desk_display::RadarDeclutterMode::TargetTag;
+
+  lv_obj_t* chipTarget = make_chip(g_settings_root, "Target", chipX, y, chipW,
+                                   declutterTarget, false);
+  add_settings_hit(chipTarget, SettingsHitKind::DeclutterTarget);
+  chipX += chipW + kSettingsChipGap;
+
+  lv_obj_t* chipCallsign = make_chip(g_settings_root, "Callsign", chipX, y, chipW,
+                                     declutterCallsign, false);
+  add_settings_hit(chipCallsign, SettingsHitKind::DeclutterCallsign);
+  chipX += chipW + kSettingsChipGap;
+
+  lv_obj_t* chipTag = make_chip(g_settings_root, "Tag", chipX, y, chipW,
+                                declutterTag, false);
+  add_settings_hit(chipTag, SettingsHitKind::DeclutterTag);
+
+  y += kSettingsChipH + kSettingsSectionGap;
+  make_section_label(g_settings_root, "MAP CLUTTER", y);
+  y += 20;
+  chipX = kSettingsPad;
+
+  lv_obj_t* chipAirports =
+      make_chip(g_settings_root, "Airports", chipX, y, chipW,
+                v.settings.showAirports, true);
+  add_settings_hit(chipAirports, SettingsHitKind::MapAirports);
+  chipX += chipW + kSettingsChipGap;
+
+  lv_obj_t* chipAirspace =
+      make_chip(g_settings_root, "Airspace", chipX, y, chipW,
+                v.settings.showAirspace, true);
+  add_settings_hit(chipAirspace, SettingsHitKind::MapAirspace);
+  chipX += chipW + kSettingsChipGap;
+
+  lv_obj_t* chipRoads = make_chip(g_settings_root, "Roads", chipX, y, chipW,
+                                  v.settings.showRoads, true);
+  add_settings_hit(chipRoads, SettingsHitKind::MapRoads);
+
+  y += kSettingsChipH + kSettingsSectionGap;
+  lv_obj_t* demoLabel = lv_label_create(g_settings_root);
+  lv_label_set_text(demoLabel, "Demo Mode");
+  lv_obj_set_style_text_font(demoLabel, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(demoLabel, rgb(0xFFFFFF), 0);
+  lv_obj_set_pos(demoLabel, kSettingsPad, y + 6);
+  lv_obj_clear_flag(demoLabel, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(demoLabel, LV_OBJ_FLAG_SCROLLABLE);
+
+  const lv_coord_t toggleW = 88;
+  lv_obj_t* demoToggle = lv_obj_create(g_settings_root);
+  lv_obj_set_size(demoToggle, toggleW, kSettingsChipH);
+  lv_obj_align(demoToggle, LV_ALIGN_TOP_RIGHT, -kSettingsPad, y);
+  lv_obj_set_style_radius(demoToggle, 4, 0);
+  lv_obj_set_style_bg_opa(demoToggle, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(demoToggle, 1, 0);
+  lv_obj_set_style_border_color(demoToggle, rgb(desk_display::theme::kDim), 0);
+  lv_obj_set_style_pad_all(demoToggle, 0, 0);
+  lv_obj_clear_flag(demoToggle, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(demoToggle, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t* offLab = lv_label_create(demoToggle);
+  lv_label_set_text(offLab, "Off");
+  lv_obj_set_style_text_font(offLab, &lv_font_montserrat_12, 0);
+  lv_obj_align(offLab, LV_ALIGN_LEFT_MID, 10, 0);
+  lv_obj_clear_flag(offLab, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t* onLab = lv_label_create(demoToggle);
+  lv_label_set_text(onLab, "On");
+  lv_obj_set_style_text_font(onLab, &lv_font_montserrat_12, 0);
+  lv_obj_align(onLab, LV_ALIGN_RIGHT_MID, -12, 0);
+  lv_obj_clear_flag(onLab, LV_OBJ_FLAG_CLICKABLE);
+
+  if (v.settings.demoMode) {
+    lv_obj_set_style_text_color(offLab, rgb(desk_display::theme::kDim), 0);
+    lv_obj_set_style_text_color(onLab, rgb(kSettingsChipOn), 0);
+    lv_obj_set_style_bg_color(demoToggle, rgb(kSettingsChipBorder), 0);
+    lv_obj_set_style_bg_opa(demoToggle, LV_OPA_40, 0);
+  } else {
+    lv_obj_set_style_text_color(offLab, rgb(kSettingsChipOn), 0);
+    lv_obj_set_style_text_color(onLab, rgb(desk_display::theme::kDim), 0);
+  }
+  add_settings_hit(demoToggle, SettingsHitKind::DemoToggle);
+
+  cache_settings_overlay_state(v);
+}
+
+void sync_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) {
+  if (!v.settingsOpen) {
+    if (g_settings_root) {
+      destroy_settings_overlay();
+    }
+    return;
+  }
+
+  if (!g_settings_root) {
+    build_settings_overlay(parent, v);
+    return;
+  }
+
+  if (settings_overlay_needs_rebuild(v)) {
+    lv_obj_del(g_settings_root);
+    g_settings_root = nullptr;
+    build_settings_overlay(parent, v);
   }
 }
 
@@ -700,6 +999,7 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
 }
 
 void clear_animate_cache() {
+  destroy_settings_overlay();
   g_parent = nullptr;
   g_hdr = nullptr;
   g_disc = nullptr;
@@ -851,6 +1151,7 @@ bool radar_lvgl_animate_classic(lv_obj_t* parent,
 
   lv_obj_clean(g_blips_layer);
   build_traffic(g_blips_layer, v);
+  sync_settings_overlay(parent, v);
   return true;
 }
 
@@ -902,6 +1203,51 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
 
   g_parent = parent;
   g_built = true;
+  sync_settings_overlay(parent, v);
+}
+
+bool radar_lvgl_settings_hit(lv_coord_t absX, lv_coord_t absY,
+                             desk_display::ScreenRadar& radar) {
+  if (!g_settings_root || !g_built) {
+    return false;
+  }
+
+  const float px = static_cast<float>(absX);
+  const float py = static_cast<float>(absY);
+
+  for (int i = 0; i < g_settings_hit_count; ++i) {
+    const SettingsHitRect& hit = g_settings_hits[i];
+    if (!point_in_settings_hit(px, py, hit)) {
+      continue;
+    }
+    switch (hit.kind) {
+      case SettingsHitKind::Done:
+        radar.closeSettings();
+        return true;
+      case SettingsHitKind::DeclutterTarget:
+        radar.setDeclutterMode(desk_display::RadarDeclutterMode::TargetOnly);
+        return true;
+      case SettingsHitKind::DeclutterCallsign:
+        radar.setDeclutterMode(desk_display::RadarDeclutterMode::TargetCallsign);
+        return true;
+      case SettingsHitKind::DeclutterTag:
+        radar.setDeclutterMode(desk_display::RadarDeclutterMode::TargetTag);
+        return true;
+      case SettingsHitKind::MapAirports:
+        radar.setShowAirports(!radar.settings().showAirports);
+        return true;
+      case SettingsHitKind::MapAirspace:
+        radar.setShowAirspace(!radar.settings().showAirspace);
+        return true;
+      case SettingsHitKind::MapRoads:
+        radar.setShowRoads(!radar.settings().showRoads);
+        return true;
+      case SettingsHitKind::DemoToggle:
+        radar.setDemoMode(!radar.settings().demoMode);
+        return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace desk_ui

@@ -82,4 +82,12 @@ bool radar_lvgl_hit_blip(lv_obj_t* parent, const desk_display::RadarView& v,
 bool radar_lvgl_hit_static(lv_obj_t* parent, const desk_display::RadarView& v,
                            lv_coord_t absX, lv_coord_t absY, std::size_t* outIndex);
 
+/**
+ * Hit-test a tap against the settings overlay when `v.settingsOpen`.
+ * Returns true when a control consumed the tap (Done, chips, demo toggle).
+ * Mutates `radar` via setters; caller persists prefs after a true return.
+ */
+bool radar_lvgl_settings_hit(lv_coord_t absX, lv_coord_t absY,
+                             desk_display::ScreenRadar& radar);
+
 }  // namespace desk_ui
