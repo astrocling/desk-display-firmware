@@ -135,6 +135,47 @@ void test_mlb_live_score_and_inning(void) {
   TEST_ASSERT_EQUAL_STRING("4-2", v.mlb.score);
   TEST_ASSERT_EQUAL_STRING("Top 7", v.mlb.inning);
   TEST_ASSERT_FALSE(v.mlb.showLogoHero);
+  TEST_ASSERT_FALSE(v.mlb.showLiveScorebug);
+}
+
+void test_mlb_live_scorebug_view(void) {
+  Scores s{};
+  s.mlb.live = true;
+  s.mlb.hasTeamAbbr = true;
+  std::strncpy(s.mlb.teamAbbr, "HOU", sizeof(s.mlb.teamAbbr) - 1);
+  s.mlb.hasOpponentAbbr = true;
+  std::strncpy(s.mlb.opponentAbbr, "CHW", sizeof(s.mlb.opponentAbbr) - 1);
+  s.mlb.hasTeamRuns = true;
+  s.mlb.teamRuns = 0;
+  s.mlb.hasOpponentRuns = true;
+  s.mlb.opponentRuns = 3;
+  s.mlb.hasInning = true;
+  std::strncpy(s.mlb.inning, "Bot 2", sizeof(s.mlb.inning) - 1);
+  s.mlb.hasBalls = true;
+  s.mlb.balls = 2;
+  s.mlb.hasStrikes = true;
+  s.mlb.strikes = 1;
+  s.mlb.hasOuts = true;
+  s.mlb.outs = 1;
+  s.mlb.hasOnFirst = true;
+  s.mlb.onFirst = false;
+  s.mlb.hasOnSecond = true;
+  s.mlb.onSecond = false;
+  s.mlb.hasOnThird = true;
+  s.mlb.onThird = false;
+  s.mlb.hasBatterName = true;
+  std::strncpy(s.mlb.batterName, "M. Murakami", sizeof(s.mlb.batterName) - 1);
+  s.mlb.hasPitcherName = true;
+  std::strncpy(s.mlb.pitcherName, "A. Blubaugh", sizeof(s.mlb.pitcherName) - 1);
+
+  g_screen.bind(s);
+  SportsView v = g_screen.view();
+  TEST_ASSERT_TRUE(v.mlb.showLiveScorebug);
+  TEST_ASSERT_EQUAL(0, v.mlb.teamRuns);
+  TEST_ASSERT_EQUAL(3, v.mlb.opponentRuns);
+  TEST_ASSERT_EQUAL_STRING("2-1 - 1 out", v.mlb.countLine);
+  TEST_ASSERT_EQUAL_STRING("Empty", v.mlb.basesLine);
+  TEST_ASSERT_EQUAL_STRING("M. Murakami - A. Blubaugh", v.mlb.batterPitcherLine);
 }
 
 void test_flagstand_next_race_when_present(void) {
@@ -246,6 +287,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_rotate_mlb_flagstand_cycle);
   RUN_TEST(test_mlb_home_logo_hero);
   RUN_TEST(test_mlb_live_score_and_inning);
+  RUN_TEST(test_mlb_live_scorebug_view);
   RUN_TEST(test_flagstand_next_race_when_present);
   RUN_TEST(test_detail_toggle);
   RUN_TEST(test_unbind_clears_ready);

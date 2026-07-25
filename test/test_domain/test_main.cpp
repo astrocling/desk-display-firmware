@@ -6,6 +6,7 @@
 #include "desk_display/adsb.hpp"
 #include "desk_display/adsb_poll.hpp"
 #include "desk_display/format_time.hpp"
+#include "desk_display/mlb_live_format.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/radar_format.hpp"
 #include "desk_display/scores_poll.hpp"
@@ -345,6 +346,43 @@ void test_scores_poller_waits_full_interval_after_success(void) {
   TEST_ASSERT_EQUAL(2, g_http_calls);
 }
 
+void test_mlb_live_format_helpers(void) {
+  MlbScores m{};
+  m.hasBalls = true;
+  m.balls = 3;
+  m.hasStrikes = true;
+  m.strikes = 2;
+  m.hasOuts = true;
+  m.outs = 2;
+  char count[32];
+  formatMlbCountLine(count, sizeof(count), m);
+  TEST_ASSERT_EQUAL_STRING("3-2 - 2 outs", count);
+
+  m.hasOnFirst = true;
+  m.onFirst = true;
+  m.hasOnSecond = true;
+  m.onSecond = true;
+  m.hasOnThird = true;
+  m.onThird = false;
+  char bases[32];
+  formatMlbBasesLine(bases, sizeof(bases), m);
+  TEST_ASSERT_EQUAL_STRING("1st & 2nd", bases);
+
+  m.onFirst = true;
+  m.onSecond = true;
+  m.onThird = true;
+  formatMlbBasesLine(bases, sizeof(bases), m);
+  TEST_ASSERT_EQUAL_STRING("Loaded", bases);
+
+  m.hasBatterName = true;
+  std::strncpy(m.batterName, "A. Judge", sizeof(m.batterName) - 1);
+  m.hasPitcherName = true;
+  std::strncpy(m.pitcherName, "F. Valdez", sizeof(m.pitcherName) - 1);
+  char names[72];
+  formatMlbBatterPitcherLine(names, sizeof(names), m);
+  TEST_ASSERT_EQUAL_STRING("A. Judge - F. Valdez", names);
+}
+
 void test_radar_offset_and_distance(void) {
   float x = 0.0f;
   float y = 0.0f;
@@ -391,5 +429,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_build_scores_url);
   RUN_TEST(test_scores_poller_only_when_active);
   RUN_TEST(test_scores_poller_waits_full_interval_after_success);
+  RUN_TEST(test_mlb_live_format_helpers);
   return UNITY_END();
 }

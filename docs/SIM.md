@@ -47,6 +47,12 @@ Once booted, two screens poll the network while they are the active screen (caro
 
 Map overlays: a debounced `MapContextPoller` GETs `{API_BASE_URL}/api/map/context` after center/range settles (~400 ms), on its **own** async HTTP slot (separate from ADS-B so the two pollers cannot clobber each other). On failure it keeps last-good overlays (fixture at boot). Optional `RADAR_POIS` in `config.h` add curated POI marks.
 
-**Sports** — polls `{API_BASE_URL}/api/scores` every ~30s on a third async HTTP slot. The first fetch runs as soon as Sports becomes active (fixture until then). On success the MLB/Flagstand card rebinds and redraws (so a live game flips from the next-game card to score/inning without leaving the screen). Failures keep last-good.
+Once booted, two screens poll the network while they are the active screen (carousel-highlighted or focused):
+
+**Radar** — polls live [adsb.lol](https://api.adsb.lol/) every ~10s via libcurl (`src/sim/sim_http.*`), centered on the radar's current lat/lon and range. Fetches start ~2.5s early on a **background thread** so the Classic sweep never stalls when the beam wraps through north. Leaving Radar stops polling; the last-fetched aircraft remain bound until you return. A failed/slow request (timeout ~8s, or HTTP 429) keeps the previous data — including the **boot fixture**, so the first seconds (or longer under rate limits) can look like sample traffic until a live response lands. There is no mid-session fixture reload.
+
+Map overlays: a debounced `MapContextPoller` GETs `{API_BASE_URL}/api/map/context` after center/range settles (~400 ms), on its **own** async HTTP slot (separate from ADS-B so the two pollers cannot clobber each other). On failure it keeps last-good overlays (fixture at boot). Optional `RADAR_POIS` in `config.h` add curated POI marks.
+
+**Sports** — polls `{API_BASE_URL}/api/scores` every ~30s on a third async HTTP slot. The first fetch runs as soon as Sports becomes active (fixture until then). While a game is live, the backend may refresh ESPN on read (~45s TTL) and return logos-ready fields (`teamRuns`/`opponentRuns`, count, bases, batter/pitcher). The sim LIVE card shows logos + runs + situation. Failures keep last-good.
 
 Classic Sweep runs continuously (including while a target is selected): **10 s/rev**, a green phosphor trail, and blips that only move when the sweep crosses them. **Click a visible blip** (Focused mode) for callsign / alt / speed (tag + card); empty click clears selection. Static airport/POI taps show a short label (aircraft hit wins overlaps). **Zoom out** (≥20 mi) uses dense dots; **zoom in** (≤15 mi) uses velocity vectors.

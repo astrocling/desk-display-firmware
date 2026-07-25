@@ -122,6 +122,30 @@ void test_parse_scores_abbrs_optional(void) {
                     static_cast<int>(s.mlb.homeAway));
 }
 
+void test_parse_scores_live_situation(void) {
+  const char* json =
+      R"({"mlb":{"live":true,"score":"0-3","inning":"Bot 2","nextGame":null,)"
+      R"("teamAbbr":"HOU","opponentAbbr":"CHW","homeAway":"away",)"
+      R"("teamRuns":0,"opponentRuns":3,"balls":2,"strikes":1,"outs":1,)"
+      R"("onFirst":false,"onSecond":true,"onThird":false,)"
+      R"("batterName":"M. Murakami","pitcherName":"A. Blubaugh"},)"
+      R"("flagstand":{"lastResult":null,"nextRace":null}})";
+
+  Scores s{};
+  TEST_ASSERT_TRUE(parseScores(json, s));
+  TEST_ASSERT_TRUE(s.mlb.live);
+  TEST_ASSERT_TRUE(s.mlb.hasTeamRuns);
+  TEST_ASSERT_EQUAL(0, s.mlb.teamRuns);
+  TEST_ASSERT_TRUE(s.mlb.hasOpponentRuns);
+  TEST_ASSERT_EQUAL(3, s.mlb.opponentRuns);
+  TEST_ASSERT_TRUE(s.mlb.hasBalls);
+  TEST_ASSERT_EQUAL(2, s.mlb.balls);
+  TEST_ASSERT_TRUE(s.mlb.hasOnSecond);
+  TEST_ASSERT_TRUE(s.mlb.onSecond);
+  TEST_ASSERT_TRUE(s.mlb.hasBatterName);
+  TEST_ASSERT_EQUAL_STRING("M. Murakami", s.mlb.batterName);
+}
+
 void test_parse_scores_flagstand_next_with_status(void) {
   const char* json =
       R"({"mlb":{"live":true,"score":"4-2","inning":"Top 7","nextGame":null},)"
@@ -210,6 +234,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_parse_scores_fixture);
   RUN_TEST(test_parse_scores_home_away_home);
   RUN_TEST(test_parse_scores_abbrs_optional);
+  RUN_TEST(test_parse_scores_live_situation);
   RUN_TEST(test_parse_scores_flagstand_next_with_status);
   RUN_TEST(test_parse_airport_fixture);
   RUN_TEST(test_parse_map_context_dayton);

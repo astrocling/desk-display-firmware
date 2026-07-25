@@ -157,6 +157,45 @@ bool parseScores(const char* json, Scores& out) {
     }
   }
 
+  auto parseOptInt = [&](const char* key, bool& has, int& value) {
+    has = false;
+    value = 0;
+    if (!mlb[key].isNull() && mlb[key].is<int>()) {
+      has = true;
+      value = mlb[key].as<int>();
+    }
+  };
+  auto parseOptBool = [&](const char* key, bool& has, bool& value) {
+    has = false;
+    value = false;
+    if (!mlb[key].isNull() && mlb[key].is<bool>()) {
+      has = true;
+      value = mlb[key].as<bool>();
+    }
+  };
+
+  parseOptInt("teamRuns", out.mlb.hasTeamRuns, out.mlb.teamRuns);
+  parseOptInt("opponentRuns", out.mlb.hasOpponentRuns, out.mlb.opponentRuns);
+  parseOptInt("balls", out.mlb.hasBalls, out.mlb.balls);
+  parseOptInt("strikes", out.mlb.hasStrikes, out.mlb.strikes);
+  parseOptInt("outs", out.mlb.hasOuts, out.mlb.outs);
+  parseOptBool("onFirst", out.mlb.hasOnFirst, out.mlb.onFirst);
+  parseOptBool("onSecond", out.mlb.hasOnSecond, out.mlb.onSecond);
+  parseOptBool("onThird", out.mlb.hasOnThird, out.mlb.onThird);
+
+  out.mlb.hasBatterName = false;
+  if (!mlb["batterName"].isNull() && mlb["batterName"].is<const char*>()) {
+    out.mlb.hasBatterName = true;
+    copyStr(out.mlb.batterName, sizeof(out.mlb.batterName),
+            mlb["batterName"].as<const char*>());
+  }
+  out.mlb.hasPitcherName = false;
+  if (!mlb["pitcherName"].isNull() && mlb["pitcherName"].is<const char*>()) {
+    out.mlb.hasPitcherName = true;
+    copyStr(out.mlb.pitcherName, sizeof(out.mlb.pitcherName),
+            mlb["pitcherName"].as<const char*>());
+  }
+
   if (doc["flagstand"].is<JsonObjectConst>()) {
     JsonObjectConst fs = doc["flagstand"].as<JsonObjectConst>();
     if (!fs["lastResult"].isNull() && fs["lastResult"].is<JsonObjectConst>()) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desk_display/mlb_live_format.hpp"
 #include "desk_display/scores.hpp"
 
 #include <cstddef>
@@ -43,6 +44,15 @@ struct SportsMlbView {
   bool hasConnector;
   char connector[4];
   bool showLogoHero;
+  /** Live scorebug with logos + split runs. */
+  bool showLiveScorebug;
+  bool hasTeamRuns;
+  int teamRuns;
+  bool hasOpponentRuns;
+  int opponentRuns;
+  char countLine[kMlbCountLineLen];
+  char basesLine[kMlbBasesLineLen];
+  char batterPitcherLine[kMlbPitchersLineLen];
 };
 
 /** Compact Flagstand card: last result + optional next race. */

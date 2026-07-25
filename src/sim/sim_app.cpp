@@ -435,22 +435,81 @@ void SimApp::refresh_content() {
         const bool nextGameCard = !v.mlb.live && (v.mlb.hasMatchup || v.mlb.hasNextGame);
 
         if (v.mlb.live) {
-          lv_obj_t* title = lv_label_create(body_);
-          lv_label_set_text(title, "MLB");
+          lv_obj_t* col = lv_obj_create(body_);
+          lv_obj_set_size(col, 280, 260);
+          lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
+          lv_obj_set_style_border_width(col, 0, 0);
+          lv_obj_set_style_pad_all(col, 0, 0);
+          lv_obj_set_style_pad_row(col, 4, 0);
+          lv_obj_clear_flag(col, LV_OBJ_FLAG_SCROLLABLE);
+          lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+          lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                                LV_FLEX_ALIGN_CENTER);
+          lv_obj_center(col);
+
+          lv_obj_t* title = lv_label_create(col);
+          lv_label_set_text(title, "LIVE");
           lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
           lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
-          lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
 
-          lv_obj_t* primary = lv_label_create(body_);
-          lv_label_set_text(primary, v.mlb.primary);
-          lv_obj_set_style_text_font(primary, &lv_font_montserrat_28, 0);
-          lv_obj_set_style_text_color(primary, rgb(0xFFFFFF), 0);
-          lv_obj_align(primary, LV_ALIGN_CENTER, 0, -10);
+          auto add_line = [&](const char* text, bool dim, const lv_font_t* font) {
+            if (!text || text[0] == '\0') {
+              return;
+            }
+            lv_obj_t* lab = lv_label_create(col);
+            lv_label_set_long_mode(lab, LV_LABEL_LONG_WRAP);
+            lv_obj_set_width(lab, 280);
+            lv_label_set_text(lab, text);
+            if (font) {
+              lv_obj_set_style_text_font(lab, font, 0);
+            }
+            lv_obj_set_style_text_color(
+                lab, rgb(dim ? desk_display::theme::kDim : 0xFFFFFF), 0);
+            lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
+          };
 
-          lv_obj_t* secondary = lv_label_create(body_);
-          lv_label_set_text(secondary, v.mlb.secondary);
-          lv_obj_set_style_text_color(secondary, rgb(desk_display::theme::kDim), 0);
-          lv_obj_align(secondary, LV_ALIGN_CENTER, 0, 30);
+          if (v.mlb.showLiveScorebug) {
+            auto add_score_row = [&](const char* abbr, int runs) {
+              lv_obj_t* row = lv_obj_create(col);
+              lv_obj_set_size(row, 280, 48);
+              lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+              lv_obj_set_style_border_width(row, 0, 0);
+              lv_obj_set_style_pad_all(row, 0, 0);
+              lv_obj_set_style_pad_column(row, 12, 0);
+              lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+              lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+              lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                                    LV_FLEX_ALIGN_CENTER);
+
+              const lv_img_dsc_t* logo = mlbTeamLogoImg(abbr);
+              if (logo) {
+                lv_obj_t* img = lv_img_create(row);
+                lv_img_set_src(img, logo);
+              } else {
+                lv_obj_t* lab = lv_label_create(row);
+                lv_label_set_text(lab, (abbr && abbr[0]) ? abbr : "?");
+                lv_obj_set_style_text_font(lab, &lv_font_montserrat_20, 0);
+                lv_obj_set_style_text_color(lab, rgb(0xFFFFFF), 0);
+              }
+
+              char runsBuf[8];
+              std::snprintf(runsBuf, sizeof(runsBuf), "%d", runs);
+              lv_obj_t* runsLab = lv_label_create(row);
+              lv_label_set_text(runsLab, runsBuf);
+              lv_obj_set_style_text_font(runsLab, &lv_font_montserrat_28, 0);
+              lv_obj_set_style_text_color(runsLab, rgb(0xFFFFFF), 0);
+            };
+
+            add_score_row(v.mlb.teamAbbr, v.mlb.teamRuns);
+            add_score_row(v.mlb.opponentAbbr, v.mlb.opponentRuns);
+            add_line(v.mlb.hasInning ? v.mlb.inning : "", true, nullptr);
+            add_line(v.mlb.countLine, true, &lv_font_montserrat_14);
+            add_line(v.mlb.basesLine, false, &lv_font_montserrat_14);
+            add_line(v.mlb.batterPitcherLine, true, &lv_font_montserrat_12);
+          } else {
+            add_line(v.mlb.primary, false, &lv_font_montserrat_28);
+            add_line(v.mlb.secondary, true, nullptr);
+          }
         } else {
           // Vertically centered card: title + (logo hero or matchup text) +
           // whenEt/record/standing, all in one flex column (no top y-stack).

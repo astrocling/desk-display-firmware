@@ -1,5 +1,7 @@
 #include "desk_display/screen_sports.hpp"
 
+#include "desk_display/mlb_live_format.hpp"
+
 #include <cstdio>
 #include <cstring>
 
@@ -157,6 +159,15 @@ void ScreenSports::fillMlbView(SportsMlbView& out) const {
     copyStr(out.connector, sizeof(out.connector), "vs");
   }
   out.showLogoHero = !m.live && m.hasTeamAbbr && m.hasOpponentAbbr;
+  out.hasTeamRuns = m.hasTeamRuns;
+  out.teamRuns = m.teamRuns;
+  out.hasOpponentRuns = m.hasOpponentRuns;
+  out.opponentRuns = m.opponentRuns;
+  formatMlbCountLine(out.countLine, sizeof(out.countLine), m);
+  formatMlbBasesLine(out.basesLine, sizeof(out.basesLine), m);
+  formatMlbBatterPitcherLine(out.batterPitcherLine, sizeof(out.batterPitcherLine), m);
+  out.showLiveScorebug = m.live && m.hasTeamAbbr && m.hasOpponentAbbr &&
+                         m.hasTeamRuns && m.hasOpponentRuns;
 
   if (m.live) {
     if (m.hasScore) {
