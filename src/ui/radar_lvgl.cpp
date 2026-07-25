@@ -4,6 +4,7 @@
 #include "desk_display/map_context.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/radar_format.hpp"
+#include "desk_display/radar_settings.hpp"
 #include "desk_display/screen_radar.hpp"
 #include "desk_display/theme.hpp"
 
@@ -131,9 +132,10 @@ void sweep_endpoint(float angleDeg, lv_coord_t cx, lv_coord_t cy, float r,
 
 void format_header(char* hdr, std::size_t hdrLen, const desk_display::RadarView& v) {
   // ASCII separators only — LVGL Montserrat fonts lack U+00B7 (·).
-  std::snprintf(hdr, hdrLen, "%.0f mi - %zu%s",
+  std::snprintf(hdr, hdrLen, "%.0f mi - %zu%s%s",
                 static_cast<double>(v.rangeMiles), v.blipCount,
-                show_vectors(v.rangeMiles) ? " - vec" : "");
+                show_vectors(v.rangeMiles) ? " - vec" : "",
+                v.settings.demoMode ? " - DEMO" : "");
 }
 
 bool disc_hit_geometry(lv_obj_t* parent, const desk_display::RadarView& v,
@@ -430,14 +432,14 @@ void build_sweep(lv_obj_t* disc, float sweepAngleDeg) {
 }
 
 void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
-                   const char* tagLine2, const char* tagLine3,
-                   uint32_t callsignColor, bool selected, lv_coord_t bx,
-                   lv_coord_t by) {
+                   const char* tagLine2, const char* tagLine3, const char* tagLine4,
+                   uint32_t callsignColor, bool selected, bool drawCallsign,
+                   bool drawLine2, lv_coord_t bx, lv_coord_t by) {
   // Place the tag toward disc center when the blip is near the rim so the
   // round clip doesn't swallow callsign / alt / type lines.
   constexpr lv_coord_t kLeaderLen = 18;
-  // Extra margin for the taller selected (3-line) tag block.
-  const lv_coord_t kTagMargin = selected ? 48 : 36;
+  const bool hasLine4 = selected && tagLine4 && tagLine4[0] != '\0';
+  const lv_coord_t kTagMargin = (selected || hasLine4) ? 60 : 36;
   const lv_coord_t cx = g_disc_px / 2;
   const lv_coord_t cy = g_disc_px / 2;
   const float dx = static_cast<float>(cx - bx);
@@ -461,6 +463,7 @@ void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
   const lv_coord_t line1Y = tagY - 12;
   const lv_coord_t line2Y = tagY;
   const lv_coord_t line3Y = tagY + 12;
+  const lv_coord_t line4Y = tagY + 24;
 
   g_leader_points[blipIndex][0] = {bx, by};
   g_leader_points[blipIndex][1] = {tagX, tagY};
@@ -475,14 +478,16 @@ void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
   lv_obj_clear_flag(leader, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_clear_flag(leader, LV_OBJ_FLAG_SCROLLABLE);
 
-  lv_obj_t* tag = lv_label_create(layer);
-  lv_label_set_text(tag, (callsign && callsign[0]) ? callsign : "?");
-  lv_obj_set_style_text_font(tag, &lv_font_montserrat_10, 0);
-  lv_obj_set_style_text_color(tag, rgb(callsignColor), 0);
-  lv_obj_set_style_text_opa(tag, opa, 0);
-  lv_obj_set_pos(tag, tagX, line1Y);
+  if (drawCallsign) {
+    lv_obj_t* tag = lv_label_create(layer);
+    lv_label_set_text(tag, (callsign && callsign[0]) ? callsign : "?");
+    lv_obj_set_style_text_font(tag, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(tag, rgb(callsignColor), 0);
+    lv_obj_set_style_text_opa(tag, opa, 0);
+    lv_obj_set_pos(tag, tagX, line1Y);
+  }
 
-  if (tagLine2 && tagLine2[0] != '\0') {
+  if (drawLine2 && tagLine2 && tagLine2[0] != '\0') {
     lv_obj_t* tag2 = lv_label_create(layer);
     lv_label_set_text(tag2, tagLine2);
     lv_obj_set_style_text_font(tag2, &lv_font_montserrat_10, 0);
@@ -499,12 +504,21 @@ void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
     lv_obj_set_style_text_opa(tag3, opa, 0);
     lv_obj_set_pos(tag3, tagX, line3Y);
   }
+
+  if (hasLine4) {
+    lv_obj_t* tag4 = lv_label_create(layer);
+    lv_label_set_text(tag4, tagLine4);
+    lv_obj_set_style_text_font(tag4, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_color(tag4, rgb(desk_display::theme::kAccent), 0);
+    lv_obj_set_style_text_opa(tag4, opa, 0);
+    lv_obj_set_pos(tag4, tagX, line4Y);
+  }
 }
 
 /**
- * Traffic layer: ≤25 mi → stars + vectors + tags on every painted blip;
- * above that → dense dots only (still selectable). Dense tags for unselected;
- * selected gets full-contrast 3-line tag.
+ * Traffic layer: ≤25 mi → stars + vectors + declutter-aware tags;
+ * above that → dense dots only (still selectable). Unselected label density
+ * follows settings; selected always gets the full tag (incl. line4 when set).
  */
 void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
   clear_hit_targets();
@@ -593,49 +607,68 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
         lv_obj_clear_flag(vec, LV_OBJ_FLAG_SCROLLABLE);
       }
 
-      char tagLine2[24];
-      char tagLine3[28];
-      tagLine2[0] = '\0';
-      tagLine3[0] = '\0';
-      const auto style = selected ? desk_display::RadarTagStyle::Full
-                                  : desk_display::RadarTagStyle::Dense;
-      desk_display::formatRadarTagLine2(tagLine2, sizeof(tagLine2), b.aircraft,
-                                        style);
+      using desk_display::RadarUnselectedLabel;
+      const auto label =
+          selected ? RadarUnselectedLabel::DenseTag
+                   : desk_display::radarUnselectedLabel(v.settings.declutter);
+
+      char tagLine2[24]{};
+      char tagLine3[28]{};
+      char tagLine4[8]{};
       if (selected) {
+        desk_display::formatRadarTagLine2(tagLine2, sizeof(tagLine2), b.aircraft,
+                                          desk_display::RadarTagStyle::Full);
         desk_display::formatRadarTagLine3(tagLine3, sizeof(tagLine3),
                                           b.aircraft.type, b.aircraft.squawk,
                                           b.notable);
+        desk_display::formatRadarTagLine4(tagLine4, sizeof(tagLine4), nullptr);
+      } else if (label == RadarUnselectedLabel::DenseTag) {
+        desk_display::formatRadarTagLine2(tagLine2, sizeof(tagLine2), b.aircraft,
+                                          desk_display::RadarTagStyle::Dense);
       }
 
-      // Mirror draw_blip_tag placement for hit boxes.
-      constexpr lv_coord_t kLeaderLen = 18;
-      const lv_coord_t kTagMargin = selected ? 48 : 36;
-      const float tdx = static_cast<float>(cx - bx);
-      const float tdy = static_cast<float>(cy - by);
-      const float tdist = std::sqrt(tdx * tdx + tdy * tdy);
-      lv_coord_t leaderDx = 16;
-      lv_coord_t leaderDy = -16;
-      if (tdist > 1.0f) {
-        const bool nearRim =
-            bx < kTagMargin || by < kTagMargin ||
-            bx > g_disc_px - kTagMargin || by > g_disc_px - kTagMargin;
-        if (nearRim) {
-          leaderDx = static_cast<lv_coord_t>((tdx / tdist) * kLeaderLen);
-          leaderDy = static_cast<lv_coord_t>((tdy / tdist) * kLeaderLen);
+      if (selected || label != RadarUnselectedLabel::None) {
+        const bool drawCs = true;
+        const bool drawL2 =
+            selected || label == RadarUnselectedLabel::DenseTag;
+        const bool hasLine4 = selected && tagLine4[0] != '\0';
+
+        // Mirror draw_blip_tag placement for hit boxes.
+        constexpr lv_coord_t kLeaderLen = 18;
+        const lv_coord_t kTagMargin = (selected || hasLine4) ? 60 : 36;
+        const float tdx = static_cast<float>(cx - bx);
+        const float tdy = static_cast<float>(cy - by);
+        const float tdist = std::sqrt(tdx * tdx + tdy * tdy);
+        lv_coord_t leaderDx = 16;
+        lv_coord_t leaderDy = -16;
+        if (tdist > 1.0f) {
+          const bool nearRim =
+              bx < kTagMargin || by < kTagMargin ||
+              bx > g_disc_px - kTagMargin || by > g_disc_px - kTagMargin;
+          if (nearRim) {
+            leaderDx = static_cast<lv_coord_t>((tdx / tdist) * kLeaderLen);
+            leaderDy = static_cast<lv_coord_t>((tdy / tdist) * kLeaderLen);
+          }
         }
-      }
-      const lv_coord_t tagX = bx + leaderDx;
-      const lv_coord_t tagY = by + leaderDy;
-      const lv_coord_t line1Y = tagY - 12;
-      const lv_coord_t line3Y = selected ? tagY + 12 : tagY;
-      hit.hasTag = true;
-      hit.tagX0 = originX + static_cast<float>(tagX);
-      hit.tagY0 = originY + static_cast<float>(line1Y);
-      hit.tagX1 = hit.tagX0 + 72.0f;
-      hit.tagY1 = originY + static_cast<float>(line3Y + 12);
+        const lv_coord_t tagX = bx + leaderDx;
+        const lv_coord_t tagY = by + leaderDy;
+        const lv_coord_t line1Y = tagY - 12;
+        lv_coord_t tagBottomY = tagY;
+        if (selected) {
+          tagBottomY = hasLine4 ? static_cast<lv_coord_t>(tagY + 24 + 12)
+                                : static_cast<lv_coord_t>(tagY + 12 + 12);
+        } else if (drawL2) {
+          tagBottomY = tagY + 12;
+        }
+        hit.hasTag = true;
+        hit.tagX0 = originX + static_cast<float>(tagX);
+        hit.tagY0 = originY + static_cast<float>(line1Y);
+        hit.tagX1 = hit.tagX0 + 72.0f;
+        hit.tagY1 = originY + static_cast<float>(tagBottomY);
 
-      draw_blip_tag(layer, i, b.aircraft.callsign, tagLine2, tagLine3, markColor,
-                    selected, bx, by);
+        draw_blip_tag(layer, i, b.aircraft.callsign, tagLine2, tagLine3, tagLine4,
+                      markColor, selected, drawCs, drawL2, bx, by);
+      }
     } else {
       const float ageFrac =
           static_cast<float>(b.litAgeMs) /
