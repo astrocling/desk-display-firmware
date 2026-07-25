@@ -41,10 +41,15 @@ constexpr float kStaticHitRadiusPx = 28.0f;
 constexpr uint32_t kSettingsPanelBg = 0x0B0F14;
 constexpr uint32_t kSettingsChipBorder = 0x006900;
 constexpr uint32_t kSettingsChipOn = 0x00FF00;
-constexpr lv_coord_t kSettingsPad = 16;
-constexpr lv_coord_t kSettingsChipH = 28;
-constexpr lv_coord_t kSettingsChipGap = 8;
-constexpr lv_coord_t kSettingsSectionGap = 12;
+/**
+ * Margin from the square parent edge so content stays inside the circular
+ * bezel. For a 360px disc, ~52px approximates the inscribed-square inset
+ * ((D - D/√2) / 2) and keeps top/side chips from clipping the ring.
+ */
+constexpr lv_coord_t kSettingsRingInset = 52;
+constexpr lv_coord_t kSettingsChipH = 26;
+constexpr lv_coord_t kSettingsChipGap = 6;
+constexpr lv_coord_t kSettingsSectionGap = 10;
 
 enum class SettingsHitKind : uint8_t {
   Done,
@@ -195,12 +200,13 @@ bool settings_overlay_needs_rebuild(const desk_display::RadarView& v) {
          v.settings.demoMode != g_cached_demo_mode;
 }
 
-lv_obj_t* make_section_label(lv_obj_t* parent, const char* text, lv_coord_t y) {
+lv_obj_t* make_section_label(lv_obj_t* parent, const char* text, lv_coord_t x,
+                             lv_coord_t y) {
   lv_obj_t* lab = lv_label_create(parent);
   lv_label_set_text(lab, text);
   lv_obj_set_style_text_font(lab, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(lab, rgb(desk_display::theme::kDim), 0);
-  lv_obj_set_pos(lab, kSettingsPad, y);
+  lv_obj_set_pos(lab, x, y);
   lv_obj_clear_flag(lab, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_clear_flag(lab, LV_OBJ_FLAG_SCROLLABLE);
   return lab;
@@ -261,6 +267,12 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
 
   const lv_coord_t pw = lv_obj_get_content_width(parent);
   const lv_coord_t ph = lv_obj_get_content_height(parent);
+  // Keep controls inside the circular bezel (inscribed content column).
+  const lv_coord_t inset =
+      pw < (kSettingsRingInset * 2 + 120) ? (pw / 8) : kSettingsRingInset;
+  const lv_coord_t contentX = inset;
+  const lv_coord_t contentW = pw - inset * 2;
+  const lv_coord_t contentY = inset;
 
   g_settings_root = lv_obj_create(parent);
   lv_obj_set_size(g_settings_root, pw, ph);
@@ -273,17 +285,18 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
   lv_obj_clear_flag(g_settings_root, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_move_foreground(g_settings_root);
 
+  constexpr lv_coord_t kDoneW = 52;
   lv_obj_t* title = lv_label_create(g_settings_root);
-  lv_label_set_text(title, "Radar Settings");
+  lv_label_set_text(title, "Settings");
   lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(title, rgb(0xFFFFFF), 0);
-  lv_obj_set_pos(title, kSettingsPad, kSettingsPad);
+  lv_obj_set_pos(title, contentX, contentY + 2);
   lv_obj_clear_flag(title, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_clear_flag(title, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t* done = lv_obj_create(g_settings_root);
-  lv_obj_set_size(done, 56, kSettingsChipH);
-  lv_obj_align(done, LV_ALIGN_TOP_RIGHT, -kSettingsPad, kSettingsPad);
+  lv_obj_set_size(done, kDoneW, kSettingsChipH);
+  lv_obj_set_pos(done, contentX + contentW - kDoneW, contentY);
   lv_obj_set_style_radius(done, 4, 0);
   lv_obj_set_style_bg_opa(done, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(done, 1, 0);
@@ -299,13 +312,13 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
   lv_obj_clear_flag(doneLab, LV_OBJ_FLAG_CLICKABLE);
   register_settings_hit(done, SettingsHitKind::Done);
 
-  lv_coord_t y = kSettingsPad + 36;
-  make_section_label(g_settings_root, "DECLUTTER", y);
-  y += 20;
+  lv_coord_t y = contentY + kSettingsChipH + 10;
+  make_section_label(g_settings_root, "DECLUTTER", contentX, y);
+  y += 18;
 
   const lv_coord_t chipW =
-      (pw - kSettingsPad * 2 - kSettingsChipGap * 2) / 3;
-  lv_coord_t chipX = kSettingsPad;
+      (contentW - kSettingsChipGap * 2) / 3;
+  lv_coord_t chipX = contentX;
 
   const bool declutterTarget =
       v.settings.declutter == desk_display::RadarDeclutterMode::TargetOnly;
@@ -329,9 +342,9 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
   register_settings_hit(chipTag, SettingsHitKind::DeclutterTag);
 
   y += kSettingsChipH + kSettingsSectionGap;
-  make_section_label(g_settings_root, "MAP CLUTTER", y);
-  y += 20;
-  chipX = kSettingsPad;
+  make_section_label(g_settings_root, "MAP CLUTTER", contentX, y);
+  y += 18;
+  chipX = contentX;
 
   lv_obj_t* chipAirports =
       make_chip(g_settings_root, "Airports", chipX, y, chipW,
@@ -354,14 +367,14 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
   lv_label_set_text(demoLabel, "Demo Mode");
   lv_obj_set_style_text_font(demoLabel, &lv_font_montserrat_12, 0);
   lv_obj_set_style_text_color(demoLabel, rgb(0xFFFFFF), 0);
-  lv_obj_set_pos(demoLabel, kSettingsPad, y + 6);
+  lv_obj_set_pos(demoLabel, contentX, y + 4);
   lv_obj_clear_flag(demoLabel, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_clear_flag(demoLabel, LV_OBJ_FLAG_SCROLLABLE);
 
-  const lv_coord_t toggleW = 88;
+  const lv_coord_t toggleW = 72;
   lv_obj_t* demoToggle = lv_obj_create(g_settings_root);
   lv_obj_set_size(demoToggle, toggleW, kSettingsChipH);
-  lv_obj_align(demoToggle, LV_ALIGN_TOP_RIGHT, -kSettingsPad, y);
+  lv_obj_set_pos(demoToggle, contentX + contentW - toggleW, y);
   lv_obj_set_style_radius(demoToggle, 4, 0);
   lv_obj_set_style_bg_opa(demoToggle, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(demoToggle, 1, 0);
@@ -373,13 +386,13 @@ void build_settings_overlay(lv_obj_t* parent, const desk_display::RadarView& v) 
   lv_obj_t* offLab = lv_label_create(demoToggle);
   lv_label_set_text(offLab, "Off");
   lv_obj_set_style_text_font(offLab, &lv_font_montserrat_12, 0);
-  lv_obj_align(offLab, LV_ALIGN_LEFT_MID, 10, 0);
+  lv_obj_align(offLab, LV_ALIGN_LEFT_MID, 8, 0);
   lv_obj_clear_flag(offLab, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t* onLab = lv_label_create(demoToggle);
   lv_label_set_text(onLab, "On");
   lv_obj_set_style_text_font(onLab, &lv_font_montserrat_12, 0);
-  lv_obj_align(onLab, LV_ALIGN_RIGHT_MID, -12, 0);
+  lv_obj_align(onLab, LV_ALIGN_RIGHT_MID, -8, 0);
   lv_obj_clear_flag(onLab, LV_OBJ_FLAG_CLICKABLE);
 
   if (v.settings.demoMode) {
