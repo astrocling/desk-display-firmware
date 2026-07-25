@@ -46,21 +46,47 @@ void mouse_read_cb(lv_indev_drv_t* /*drv*/, lv_indev_data_t* data) {
 }
 
 void map_mouse_to_display(int window_x, int window_y) {
-  // Map window pixels → LVGL display pixels via the actual window size.
-  // Avoid SDL_RenderWindowToLogical here: with ALLOW_HIGHDPI + logical size +
-  // kZoom it can disagree with LVGL's 360×360 coordinate space on macOS.
+  // Mouse coords may already be in LVGL/display space (0..kDisp-1) or in
+  // window/backing space (0..zoom*kDisp or retina). With
+  // SDL_RenderSetLogicalSize, some macOS/SDL builds deliver logical coords
+  // in the event stream — dividing those by kZoom double-scales taps toward
+  // the top-left (raw 243 → mapped 121 while the blip sits at ~214).
+  //
+  // Rule: if the event already fits in the display, use it as-is. Only scale
+  // when the event is clearly in a larger coordinate space.
+  if (window_x >= 0 && window_y >= 0 && window_x < kDispW &&
+      window_y < kDispH) {
+    mouse_x_ = window_x;
+    mouse_y_ = window_y;
+    return;
+  }
+
+  const int point_w = kDispW * kZoom;
+  const int point_h = kDispH * kZoom;
+  int div_w = point_w;
+  int div_h = point_h;
+
   int ww = 0;
   int wh = 0;
   if (window_) {
     SDL_GetWindowSize(window_, &ww, &wh);
   }
-  if (ww > 0 && wh > 0) {
-    mouse_x_ = window_x * kDispW / ww;
-    mouse_y_ = window_y * kDispH / wh;
-  } else {
-    mouse_x_ = window_x / kZoom;
-    mouse_y_ = window_y / kZoom;
+  int rw = 0;
+  int rh = 0;
+  if (renderer_) {
+    SDL_GetRendererOutputSize(renderer_, &rw, &rh);
   }
+  if (rw > 0 && rh > 0 && window_x < rw && window_y < rh &&
+      (rw >= point_w || rh >= point_h)) {
+    div_w = rw;
+    div_h = rh;
+  } else if (ww > 0 && wh > 0) {
+    div_w = ww;
+    div_h = wh;
+  }
+
+  mouse_x_ = window_x * kDispW / div_w;
+  mouse_y_ = window_y * kDispH / div_h;
   if (mouse_x_ < 0) {
     mouse_x_ = 0;
   }
