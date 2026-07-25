@@ -187,7 +187,7 @@ void test_mlb_live_scorebug_view(void) {
   TEST_ASSERT_FALSE(v.mlb.onSecond);
   TEST_ASSERT_FALSE(v.mlb.onThird);
   TEST_ASSERT_EQUAL_STRING(
-      "AB: A. Judge .311 · 1-3, BB\nP: F. Valdez 2.85 · 5.0 IP, 2 ER",
+      "AB: A. Judge .311 - 1-3, BB\nP: F. Valdez 2.85 - 5.0 IP, 2 ER",
       v.mlb.batterPitcherLine);
 
   s.mlb.onFirst = true;

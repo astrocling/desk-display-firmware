@@ -396,7 +396,7 @@ void test_mlb_live_format_helpers(void) {
   char names[128];
   formatMlbBatterPitcherLine(names, sizeof(names), m);
   TEST_ASSERT_EQUAL_STRING(
-      "AB: A. Judge .311 · 1-3, BB\nP: F. Valdez 2.85 · 5.0 IP, 2 ER", names);
+      "AB: A. Judge .311 - 1-3, BB\nP: F. Valdez 2.85 - 5.0 IP, 2 ER", names);
 
   MlbScores m2{};
   m2.hasBatterName = true;
@@ -412,7 +412,7 @@ void test_mlb_live_format_helpers(void) {
   m3.hasBatterSummary = true;
   std::strncpy(m3.batterSummary, "1-3, BB", sizeof(m3.batterSummary) - 1);
   formatMlbBatterPitcherLine(names, sizeof(names), m3);
-  TEST_ASSERT_EQUAL_STRING("AB: A. Judge · 1-3, BB", names);
+  TEST_ASSERT_EQUAL_STRING("AB: A. Judge - 1-3, BB", names);
 
   MlbScores m4{};
   m4.hasPitcherName = true;
@@ -422,7 +422,18 @@ void test_mlb_live_format_helpers(void) {
   m4.hasPitcherSummary = true;
   std::strncpy(m4.pitcherSummary, "5.0 IP, 2 ER", sizeof(m4.pitcherSummary) - 1);
   formatMlbBatterPitcherLine(names, sizeof(names), m4);
-  TEST_ASSERT_EQUAL_STRING("P: F. Valdez 2.85 · 5.0 IP, 2 ER", names);
+  TEST_ASSERT_EQUAL_STRING("P: F. Valdez 2.85 - 5.0 IP, 2 ER", names);
+
+  MlbScores m5{};
+  m5.hasPitcherName = true;
+  std::strncpy(m5.pitcherName, "F. Valdez", sizeof(m5.pitcherName) - 1);
+  m5.hasPitcherEra = true;
+  std::strncpy(m5.pitcherEra, "2.85", sizeof(m5.pitcherEra) - 1);
+  m5.hasPitcherSummary = true;
+  std::strncpy(m5.pitcherSummary, "5.0 IP, 2 ER, 4 H, 6 K, BB, HR",
+               sizeof(m5.pitcherSummary) - 1);
+  formatMlbBatterPitcherLine(names, sizeof(names), m5);
+  TEST_ASSERT_EQUAL_STRING("P: F. Valdez 2.85 - 5.0 IP, 2 ER, 4 H, 6 K, BB", names);
 }
 
 void test_radar_offset_and_distance(void) {

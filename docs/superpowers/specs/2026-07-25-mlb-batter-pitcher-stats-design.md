@@ -87,7 +87,7 @@ Assembly rules (name required to emit a role line):
 
 1. Start with `AB: {name}` / `P: {name}`
 2. If AVG / ERA present, append ` {avg|era}`
-3. If summary present, append ` · {summary}`
+3. If summary present, append ` - {summary}` (ASCII separator; pitcher summary truncated to 28 chars in firmware display)
 4. Two roles joined with `\n` when both exist (same as today’s labeled layout)
 5. Truncation: prefer keeping name + season stat; allow summary to shorten via existing label wrap width (280) — no hard client-side ellipsis in this pass unless lines overflow the round bezel in manual check
 
