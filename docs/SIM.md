@@ -32,18 +32,22 @@ The old persistent `Carousel · Screen` / `Focused · Screen` debug label is rem
 | Enter / Space | Center tap (“knob click”) |
 | Mouse click / T | Tap |
 | Y | Double-tap |
-| U | Long-press |
+| U | Long-press (on Radar: opens settings overlay) |
 | Esc / Q | Quit |
 
 Mouse acts as capacitive touch for LVGL pointer input.
 
 ## Data
 
-Boots offline: loads JSON from `fixtures/` (captured from the live backend) so Weather, Timezones, and Sports have data before any network call happens. Radar loads `fixtures/map_context_dayton.json` for airport marks and Class D sample rings, but does **not** bind `fixtures/adsb_sample.json` at boot — sample aircraft confused the first Classic sweep before live traffic arrived. That fixture remains for unit tests and a future settings demo mode.
+Boots offline: loads JSON from `fixtures/` (captured from the live backend) so Weather, Timezones, and Sports have data before any network call happens. Radar loads `fixtures/map_context_dayton.json` for airport marks and Class D sample rings. Radar settings persist to `radar_prefs.bin` in the sim working directory (gitignored); they are loaded on boot and saved after each settings change.
+
+**Radar settings** — long-press (`U`) while focused on Radar opens the overlay (declutter mode, map layers, demo toggle). Center-tap or **Done** closes it without leaving the screen. While settings are open, zoom is frozen and taps route to the overlay only (aircraft cannot be selected through the panel). Idle settle also closes settings.
+
+**Demo mode** — when enabled in settings, live ADS-B polling is paused and `fixtures/adsb_sample.json` is bound instead. Turning demo off resumes live polling; sample blips remain until the next successful live fetch.
 
 Once booted, screens poll the network while they are the active screen (carousel-highlighted or focused):
 
-**Radar** — polls live [adsb.lol](https://api.adsb.lol/) every ~10s via libcurl (`src/sim/sim_http.*`), centered on the radar's current lat/lon and range. Fetches start ~2.5s early on a **background thread** so the Classic sweep never stalls when the beam wraps through north. Leaving Radar stops polling; the last-fetched aircraft remain bound until you return. Until the first successful poll, the radar shows map overlays only (no aircraft). A failed/slow request (timeout ~8s, or HTTP 429) keeps the previous live data when available. There is no mid-session fixture reload.
+**Radar** — polls live [adsb.lol](https://api.adsb.lol/) every ~10s via libcurl (`src/sim/sim_http.*`), centered on the radar's current lat/lon and range, unless demo mode is on. Fetches start ~2.5s early on a **background thread** so the Classic sweep never stalls when the beam wraps through north. Leaving Radar stops polling; the last-fetched aircraft remain bound until you return. Until the first successful poll, the radar shows map overlays only (no aircraft). A failed/slow request (timeout ~8s, or HTTP 429) keeps the previous live data when available.
 
 Map overlays: a debounced `MapContextPoller` GETs `{API_BASE_URL}/api/map/context` after center/range settles (~400 ms), on its **own** async HTTP slot (separate from ADS-B so the two pollers cannot clobber each other). On failure it keeps last-good overlays (fixture at boot). Optional `RADAR_POIS` in `config.h` add curated POI marks.
 

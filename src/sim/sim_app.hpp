@@ -25,6 +25,8 @@ class SimApp {
 
  private:
   void load_fixtures();
+  void persist_radar_prefs();
+  void bind_demo_adsb_fixture();
   void sync_clock_from_wall();
   void rebuild_ui_for_active();
   void refresh_content();

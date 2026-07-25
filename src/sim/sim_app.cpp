@@ -4,6 +4,8 @@
 
 #include "desk_display/adsb.hpp"
 #include "desk_display/airport.hpp"
+#include "desk_display/radar_prefs.hpp"
+#include "desk_display/radar_settings.hpp"
 #include "desk_display/format_time.hpp"
 #include "desk_display/map_context.hpp"
 #include "desk_display/scores.hpp"
@@ -30,6 +32,8 @@
 
 namespace sim {
 namespace {
+
+constexpr const char* kRadarPrefsPath = "radar_prefs.bin";
 
 lv_color_t rgb(uint32_t c) {
   return lv_color_make((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
@@ -138,11 +142,6 @@ void SimApp::load_fixtures() {
     sports_.bind(scores);
   }
 
-  // Sample ADS-B traffic (`fixtures/adsb_sample.json`) is intentionally not
-  // bound at boot — priming the radar with fake blips confuses the first
-  // Classic sweep before live adsb.lol data arrives. Keep the fixture for
-  // unit tests and a future settings "demo mode".
-
   desk_display::MapContext mapCtx{};
   if (loadFixture("map_context_dayton.json", buf, sizeof(buf)) &&
       desk_display::parseMapContext(buf, mapCtx)) {
@@ -153,9 +152,29 @@ void SimApp::load_fixtures() {
   radar_.setPois(RADAR_POIS, static_cast<std::size_t>(RADAR_POI_COUNT));
 #endif
 
+  desk_display::RadarSettings prefs = desk_display::radarSettingsFactoryDefaults();
+  desk_display::loadRadarSettingsFromFile(prefs, kRadarPrefsPath);
+  radar_.setSettings(prefs);
+  if (prefs.demoMode) {
+    bind_demo_adsb_fixture();
+  }
+
   // Carousel is the browse path to Timezones — no "→ Timezones" chrome on Clock.
   clock_.setTimezoneBoardHint(false);
   std::fprintf(stdout, "Fixtures loaded (weather/tz/scores/map-context as available).\n");
+}
+
+void SimApp::persist_radar_prefs() {
+  desk_display::saveRadarSettingsToFile(radar_.settings(), kRadarPrefsPath);
+}
+
+void SimApp::bind_demo_adsb_fixture() {
+  char buf[256 * 1024];
+  desk_display::AircraftList list{};
+  if (loadFixture("adsb_sample.json", buf, sizeof(buf)) &&
+      desk_display::parseAdsb(buf, list)) {
+    radar_.bind(list);
+  }
 }
 
 void SimApp::sync_clock_from_wall() {
@@ -763,7 +782,7 @@ void SimApp::on_long_press_focused() {
       timezones_.onLongPress();
       break;
     case Screen::Radar:
-      radar_.pinCenter();
+      radar_.openSettings();
       break;
     default:
       break;
@@ -785,7 +804,11 @@ void SimApp::handle_input() {
   const auto prev_mode = nav_.mode();
   const auto prev_screen = nav_.active_screen();
 
-  if (keys.rotate_delta != 0) {
+  const bool radar_settings_ui =
+      nav_.mode() == desk_display::NavMode::Focused &&
+      nav_.focused() == desk_display::Screen::Radar && radar_.settingsOpen();
+
+  if (keys.rotate_delta != 0 && !radar_settings_ui) {
     if (nav_.mode() == desk_display::NavMode::Carousel) {
       nav_.on_rotate(static_cast<int8_t>(keys.rotate_delta));
     } else {
@@ -794,25 +817,39 @@ void SimApp::handle_input() {
     }
   }
   if (keys.center_tap) {
-    if (nav_.mode() == desk_display::NavMode::Focused &&
-        nav_.focused() == desk_display::Screen::Radar) {
-      radar_.revertTempCenter();
+    if (radar_settings_ui) {
+      radar_.closeSettings();
+    } else {
+      if (nav_.mode() == desk_display::NavMode::Focused &&
+          nav_.focused() == desk_display::Screen::Radar) {
+        radar_.revertTempCenter();
+      }
+      nav_.on_center_tap();
     }
-    nav_.on_center_tap();
   }
   if (keys.tap) {
-    if (nav_.mode() == desk_display::NavMode::Focused) {
-      on_tap_focused(keys.tap_x, keys.tap_y);
+    if (radar_settings_ui) {
+      const bool prev_demo = radar_.settings().demoMode;
+      if (desk_ui::radar_lvgl_settings_hit(keys.tap_x, keys.tap_y, radar_)) {
+        persist_radar_prefs();
+        if (radar_.settings().demoMode && !prev_demo) {
+          bind_demo_adsb_fixture();
+        }
+      }
+    } else {
+      if (nav_.mode() == desk_display::NavMode::Focused) {
+        on_tap_focused(keys.tap_x, keys.tap_y);
+      }
+      nav_.on_tap(keys.tap_x, keys.tap_y);
     }
-    nav_.on_tap(keys.tap_x, keys.tap_y);
   }
-  if (keys.double_tap) {
+  if (keys.double_tap && !radar_settings_ui) {
     if (nav_.mode() == desk_display::NavMode::Focused) {
       on_double_tap_focused();
     }
     nav_.on_double_tap();
   }
-  if (keys.long_press) {
+  if (keys.long_press && !radar_settings_ui) {
     if (nav_.mode() == desk_display::NavMode::Focused) {
       on_long_press_focused();
     }
@@ -852,7 +889,8 @@ void SimApp::update(uint32_t elapsed_ms) {
   // also only advances while Radar is visible.
   const bool radar_active = nav_.active_screen() == Screen::Radar;
   const bool sports_active = nav_.active_screen() == Screen::Sports;
-  adsb_poll_.setActive(radar_active);
+  const bool demo_mode = radar_.settings().demoMode;
+  adsb_poll_.setActive(radar_active && !demo_mode);
   map_ctx_poll_.setActive(radar_active);
   scores_poll_.setActive(sports_active);
   if (radar_active) {
