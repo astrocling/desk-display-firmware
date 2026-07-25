@@ -9,6 +9,7 @@
 #include "desk_display/mlb_live_format.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/radar_format.hpp"
+#include "desk_display/radar_settings.hpp"
 #include "desk_display/scores_poll.hpp"
 #include "desk_display/scrub.hpp"
 #include "desk_display/timezone_status.hpp"
@@ -436,6 +437,34 @@ void test_mlb_live_format_helpers(void) {
   TEST_ASSERT_EQUAL_STRING("P: F. Valdez 2.85 - 5.0 IP, 2 ER, 4 H, 6 K, BB", names);
 }
 
+void test_radar_settings_defaults(void) {
+  const auto s = desk_display::radarSettingsFactoryDefaults();
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(desk_display::RadarDeclutterMode::TargetTag),
+      static_cast<uint8_t>(s.declutter));
+  TEST_ASSERT_TRUE(s.showAirports);
+  TEST_ASSERT_TRUE(s.showAirspace);
+  TEST_ASSERT_TRUE(s.showRoads);
+  TEST_ASSERT_FALSE(s.demoMode);
+}
+
+void test_radar_unselected_label_modes(void) {
+  using desk_display::RadarDeclutterMode;
+  using desk_display::RadarUnselectedLabel;
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(RadarUnselectedLabel::None),
+      static_cast<uint8_t>(
+          desk_display::radarUnselectedLabel(RadarDeclutterMode::TargetOnly)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(RadarUnselectedLabel::Callsign),
+      static_cast<uint8_t>(desk_display::radarUnselectedLabel(
+          RadarDeclutterMode::TargetCallsign)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(RadarUnselectedLabel::DenseTag),
+      static_cast<uint8_t>(
+          desk_display::radarUnselectedLabel(RadarDeclutterMode::TargetTag)));
+}
+
 void test_radar_offset_and_distance(void) {
   float x = 0.0f;
   float y = 0.0f;
@@ -474,6 +503,8 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_trend_deadband);
   RUN_TEST(test_format_radar_tag_line2_omits_missing);
   RUN_TEST(test_format_radar_dense_and_line3);
+  RUN_TEST(test_radar_settings_defaults);
+  RUN_TEST(test_radar_unselected_label_modes);
   RUN_TEST(test_radar_offset_and_distance);
   RUN_TEST(test_statute_to_nm_and_url);
   RUN_TEST(test_adsb_poller_only_when_active);
