@@ -83,7 +83,7 @@ bool SimApp::init() {
   load_fixtures();
   sync_clock_from_wall();
   adsb_poll_.setHttpGet(&sim::simAdsbHttpGet, nullptr);
-  map_ctx_poll_.setHttpGet(&sim::simAdsbHttpGet, nullptr);
+  map_ctx_poll_.setHttpGet(&sim::simMapContextHttpGet, nullptr);
 
   root_ = lv_obj_create(lv_scr_act());
   lv_obj_set_size(root_, kDispW, kDispH);

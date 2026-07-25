@@ -57,30 +57,101 @@ struct AsyncSlot {
   std::size_t bodyLen = 0;
 };
 
-AsyncSlot& asyncSlot() {
-  static AsyncSlot slot;
-  return slot;
+// Heap-allocated and never deleted: detached curl workers may outlive main(),
+// and must not touch a destroyed mutex/slot during static teardown (SIGSEGV).
+AsyncSlot& adsbSlot() {
+  static AsyncSlot* slot = new AsyncSlot();
+  return *slot;
 }
 
-void runAsyncGet(std::string urlCopy) {
+AsyncSlot& mapContextSlot() {
+  static AsyncSlot* slot = new AsyncSlot();
+  return *slot;
+}
+
+void runAsyncGet(AsyncSlot* slot, std::string urlCopy) {
   char localBody[kAsyncBodyCap];
   std::size_t localLen = 0;
   const bool ok = simHttpGet(urlCopy.c_str(), localBody, sizeof(localBody), localLen);
 
-  AsyncSlot& slot = asyncSlot();
-  std::lock_guard<std::mutex> lock(slot.mu);
+  std::lock_guard<std::mutex> lock(slot->mu);
   // Only publish if this worker still owns the in-flight URL.
-  if (slot.state != AsyncState::Busy || std::strcmp(slot.url, urlCopy.c_str()) != 0) {
+  if (slot->state != AsyncState::Busy ||
+      std::strcmp(slot->url, urlCopy.c_str()) != 0) {
     return;
   }
-  if (!ok || localLen >= sizeof(slot.body)) {
-    slot.state = AsyncState::Failed;
-    slot.bodyLen = 0;
+  if (!ok || localLen >= sizeof(slot->body)) {
+    slot->state = AsyncState::Failed;
+    slot->bodyLen = 0;
     return;
   }
-  std::memcpy(slot.body, localBody, localLen);
-  slot.bodyLen = localLen;
-  slot.state = AsyncState::Ready;
+  std::memcpy(slot->body, localBody, localLen);
+  slot->bodyLen = localLen;
+  slot->state = AsyncState::Ready;
+}
+
+bool simAsyncHttpGet(AsyncSlot& slot, const char* url, char* body, std::size_t bodyCap,
+                     std::size_t& bodyLen) {
+  bodyLen = 0;
+  if (!url || !body || bodyCap == 0) {
+    return false;
+  }
+
+  std::string launchUrl;
+  bool launch = false;
+
+  {
+    std::lock_guard<std::mutex> lock(slot.mu);
+
+    if (slot.state == AsyncState::Ready) {
+      if (std::strcmp(slot.url, url) == 0) {
+        if (slot.bodyLen >= bodyCap) {
+          slot.state = AsyncState::Idle;
+          slot.bodyLen = 0;
+          return false;
+        }
+        std::memcpy(body, slot.body, slot.bodyLen);
+        bodyLen = slot.bodyLen;
+        slot.state = AsyncState::Idle;
+        slot.bodyLen = 0;
+        return true;
+      }
+      // Stale Ready for a previous URL (center/range changed) — drop it.
+      slot.state = AsyncState::Idle;
+      slot.bodyLen = 0;
+    }
+
+    if (slot.state == AsyncState::Failed) {
+      // Consume the failure so the poller can budget another attempt / interval.
+      slot.state = AsyncState::Idle;
+      slot.bodyLen = 0;
+      return false;
+    }
+
+    if (slot.state == AsyncState::Busy) {
+      if (std::strcmp(slot.url, url) == 0) {
+        return false;  // still in flight for this URL
+      }
+      // URL changed under an in-flight request: re-aim. The old worker will
+      // no-op on URL mismatch when it finishes; launch a replacement fetch.
+      std::snprintf(slot.url, sizeof(slot.url), "%s", url);
+      slot.bodyLen = 0;
+      launchUrl = slot.url;
+      launch = true;
+    } else {
+      // Idle: record the URL and hand work to a detached background GET.
+      std::snprintf(slot.url, sizeof(slot.url), "%s", url);
+      slot.bodyLen = 0;
+      slot.state = AsyncState::Busy;
+      launchUrl = slot.url;
+      launch = true;
+    }
+  }
+
+  if (launch) {
+    std::thread(runAsyncGet, &slot, std::move(launchUrl)).detach();
+  }
+  return false;
 }
 
 }  // namespace
@@ -132,50 +203,12 @@ bool simHttpGet(const char* url, char* body, std::size_t bodyCap, std::size_t& b
 
 bool simAdsbHttpGet(const char* url, char* body, std::size_t bodyCap, std::size_t& bodyLen,
                     void* /*user*/) {
-  bodyLen = 0;
-  if (!url || !body || bodyCap == 0) {
-    return false;
-  }
+  return simAsyncHttpGet(adsbSlot(), url, body, bodyCap, bodyLen);
+}
 
-  AsyncSlot& slot = asyncSlot();
-  std::string launchUrl;
-
-  {
-    std::lock_guard<std::mutex> lock(slot.mu);
-
-    if (slot.state == AsyncState::Ready && std::strcmp(slot.url, url) == 0) {
-      if (slot.bodyLen >= bodyCap) {
-        slot.state = AsyncState::Idle;
-        slot.bodyLen = 0;
-        return false;
-      }
-      std::memcpy(body, slot.body, slot.bodyLen);
-      bodyLen = slot.bodyLen;
-      slot.state = AsyncState::Idle;
-      slot.bodyLen = 0;
-      return true;
-    }
-
-    if (slot.state == AsyncState::Failed) {
-      // Consume the failure so the poller can budget another attempt / interval.
-      slot.state = AsyncState::Idle;
-      slot.bodyLen = 0;
-      return false;
-    }
-
-    if (slot.state == AsyncState::Busy) {
-      return false;
-    }
-
-    // Idle: record the URL and hand work to a detached background GET.
-    std::snprintf(slot.url, sizeof(slot.url), "%s", url);
-    slot.bodyLen = 0;
-    slot.state = AsyncState::Busy;
-    launchUrl = slot.url;
-  }
-
-  std::thread(runAsyncGet, std::move(launchUrl)).detach();
-  return false;
+bool simMapContextHttpGet(const char* url, char* body, std::size_t bodyCap,
+                          std::size_t& bodyLen, void* /*user*/) {
+  return simAsyncHttpGet(mapContextSlot(), url, body, bodyCap, bodyLen);
 }
 
 }  // namespace sim
