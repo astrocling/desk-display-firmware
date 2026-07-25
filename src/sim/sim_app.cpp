@@ -138,10 +138,10 @@ void SimApp::load_fixtures() {
     sports_.bind(scores);
   }
 
-  desk_display::AircraftList ac{};
-  if (loadFixture("adsb_sample.json", buf, sizeof(buf)) && desk_display::parseAdsb(buf, ac)) {
-    radar_.bind(ac);
-  }
+  // Sample ADS-B traffic (`fixtures/adsb_sample.json`) is intentionally not
+  // bound at boot — priming the radar with fake blips confuses the first
+  // Classic sweep before live adsb.lol data arrives. Keep the fixture for
+  // unit tests and a future settings "demo mode".
 
   desk_display::MapContext mapCtx{};
   if (loadFixture("map_context_dayton.json", buf, sizeof(buf)) &&
@@ -155,7 +155,7 @@ void SimApp::load_fixtures() {
 
   // Carousel is the browse path to Timezones — no "→ Timezones" chrome on Clock.
   clock_.setTimezoneBoardHint(false);
-  std::fprintf(stdout, "Fixtures loaded (weather/tz/scores/adsb as available).\n");
+  std::fprintf(stdout, "Fixtures loaded (weather/tz/scores/map-context as available).\n");
 }
 
 void SimApp::sync_clock_from_wall() {

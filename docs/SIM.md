@@ -39,17 +39,11 @@ Mouse acts as capacitive touch for LVGL pointer input.
 
 ## Data
 
-Boots offline: loads JSON from `fixtures/` (captured from the live backend + adsb.lol) so every screen has data before any network call happens. Radar also loads `fixtures/map_context_dayton.json` for airport marks and Class D sample rings.
+Boots offline: loads JSON from `fixtures/` (captured from the live backend) so Weather, Timezones, and Sports have data before any network call happens. Radar loads `fixtures/map_context_dayton.json` for airport marks and Class D sample rings, but does **not** bind `fixtures/adsb_sample.json` at boot — sample aircraft confused the first Classic sweep before live traffic arrived. That fixture remains for unit tests and a future settings demo mode.
 
-Once booted, two screens poll the network while they are the active screen (carousel-highlighted or focused):
+Once booted, screens poll the network while they are the active screen (carousel-highlighted or focused):
 
-**Radar** — polls live [adsb.lol](https://api.adsb.lol/) every ~10s via libcurl (`src/sim/sim_http.*`), centered on the radar's current lat/lon and range. Fetches start ~2.5s early on a **background thread** so the Classic sweep never stalls when the beam wraps through north. Leaving Radar stops polling; the last-fetched aircraft remain bound until you return. A failed/slow request (timeout ~8s, or HTTP 429) keeps the previous data — including the **boot fixture**, so the first seconds (or longer under rate limits) can look like sample traffic until a live response lands. There is no mid-session fixture reload.
-
-Map overlays: a debounced `MapContextPoller` GETs `{API_BASE_URL}/api/map/context` after center/range settles (~400 ms), on its **own** async HTTP slot (separate from ADS-B so the two pollers cannot clobber each other). On failure it keeps last-good overlays (fixture at boot). Optional `RADAR_POIS` in `config.h` add curated POI marks.
-
-Once booted, two screens poll the network while they are the active screen (carousel-highlighted or focused):
-
-**Radar** — polls live [adsb.lol](https://api.adsb.lol/) every ~10s via libcurl (`src/sim/sim_http.*`), centered on the radar's current lat/lon and range. Fetches start ~2.5s early on a **background thread** so the Classic sweep never stalls when the beam wraps through north. Leaving Radar stops polling; the last-fetched aircraft remain bound until you return. A failed/slow request (timeout ~8s, or HTTP 429) keeps the previous data — including the **boot fixture**, so the first seconds (or longer under rate limits) can look like sample traffic until a live response lands. There is no mid-session fixture reload.
+**Radar** — polls live [adsb.lol](https://api.adsb.lol/) every ~10s via libcurl (`src/sim/sim_http.*`), centered on the radar's current lat/lon and range. Fetches start ~2.5s early on a **background thread** so the Classic sweep never stalls when the beam wraps through north. Leaving Radar stops polling; the last-fetched aircraft remain bound until you return. Until the first successful poll, the radar shows map overlays only (no aircraft). A failed/slow request (timeout ~8s, or HTTP 429) keeps the previous live data when available. There is no mid-session fixture reload.
 
 Map overlays: a debounced `MapContextPoller` GETs `{API_BASE_URL}/api/map/context` after center/range settles (~400 ms), on its **own** async HTTP slot (separate from ADS-B so the two pollers cannot clobber each other). On failure it keeps last-good overlays (fixture at boot). Optional `RADAR_POIS` in `config.h` add curated POI marks.
 
