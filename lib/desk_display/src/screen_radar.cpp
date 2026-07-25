@@ -109,6 +109,13 @@ void trimRingCandidates(RingCandidate* cands, std::size_t& count,
   }
 }
 
+void normalizeRadarSettings(RadarSettings& s) {
+  const auto declutter = static_cast<uint8_t>(s.declutter);
+  if (declutter > static_cast<uint8_t>(RadarDeclutterMode::TargetTag)) {
+    s.declutter = RadarDeclutterMode::TargetTag;
+  }
+}
+
 }  // namespace
 
 ScreenRadar::ScreenRadar() { reset(); }
@@ -144,6 +151,8 @@ void ScreenRadar::reset() {
   hasStaticSelection_ = false;
   selectedStaticIndex_ = 0;
   sweepAngleDeg_ = 0.0f;
+  settings_ = radarSettingsFactoryDefaults();
+  settingsOpen_ = false;
 }
 
 void ScreenRadar::setInterestingRegs(const char* const* regs, std::size_t count) {
@@ -437,7 +446,44 @@ void ScreenRadar::clearStaticSelection() {
   selectedStaticIndex_ = 0;
 }
 
-void ScreenRadar::onIdleSettle() { clearSelection(); }
+void ScreenRadar::setSettings(const RadarSettings& s) {
+  settings_ = s;
+  normalizeRadarSettings(settings_);
+  reprojectOverlays();
+}
+
+void ScreenRadar::setDeclutterMode(RadarDeclutterMode m) {
+  settings_.declutter = m;
+  normalizeRadarSettings(settings_);
+}
+
+void ScreenRadar::setShowAirports(bool show) {
+  settings_.showAirports = show;
+  reprojectOverlays();
+}
+
+void ScreenRadar::setShowAirspace(bool show) {
+  settings_.showAirspace = show;
+  reprojectOverlays();
+}
+
+void ScreenRadar::setShowRoads(bool show) {
+  settings_.showRoads = show;
+  reprojectOverlays();
+}
+
+void ScreenRadar::setDemoMode(bool demo) { settings_.demoMode = demo; }
+
+void ScreenRadar::openSettings() { settingsOpen_ = true; }
+
+void ScreenRadar::closeSettings() { settingsOpen_ = false; }
+
+void ScreenRadar::onIdleSettle() {
+  if (settingsOpen_) {
+    closeSettings();
+  }
+  clearSelection();
+}
 
 RadarDetailCard ScreenRadar::detailCard() const {
   RadarDetailCard card{};
@@ -542,6 +588,8 @@ RadarView ScreenRadar::view() const {
   v.selectedIndex = selectedIndex_;
   v.detail = detailCard();
   v.sweepAngleDeg = sweepAngleDeg_;
+  v.settings = settings_;
+  v.settingsOpen = settingsOpen_;
   return v;
 }
 
@@ -602,115 +650,123 @@ void ScreenRadar::reprojectOverlays() {
   highwayCount_ = 0;
 
   if (hasMapContext_) {
-    std::size_t airportIndices[40];
-    float airportDistances[40];
-    std::size_t airportCandidateCount = 0;
-    for (std::size_t i = 0; i < mapContext_.airportCount; ++i) {
-      const MapAirport& ap = mapContext_.airports[i];
-      const float dist =
-          distanceMiles(centerLat_, centerLon_, ap.lat, ap.lon);
-      if (dist > rangeMiles_ + 0.01f) {
-        continue;
+    if (settings_.showAirports) {
+      std::size_t airportIndices[40];
+      float airportDistances[40];
+      std::size_t airportCandidateCount = 0;
+      for (std::size_t i = 0; i < mapContext_.airportCount; ++i) {
+        const MapAirport& ap = mapContext_.airports[i];
+        const float dist =
+            distanceMiles(centerLat_, centerLon_, ap.lat, ap.lon);
+        if (dist > rangeMiles_ + 0.01f) {
+          continue;
+        }
+        airportIndices[airportCandidateCount] = i;
+        airportDistances[airportCandidateCount] = dist;
+        ++airportCandidateCount;
       }
-      airportIndices[airportCandidateCount] = i;
-      airportDistances[airportCandidateCount] = dist;
-      ++airportCandidateCount;
-    }
-    sortAirportCandidatesByDistance(airportIndices, airportDistances,
-                                    airportCandidateCount);
-    const std::size_t airportLimit =
-        airportCandidateCount > kMaxProjectedAirports ? kMaxProjectedAirports
-                                                      : airportCandidateCount;
-    for (std::size_t i = 0; i < airportLimit; ++i) {
-      const MapAirport& ap = mapContext_.airports[airportIndices[i]];
-      RadarStaticMark& mark = staticMarks_[staticMarkCount_++];
-      mark.kind = RadarStaticMark::Kind::Airport;
-      if (ap.icao[0] != '\0') {
-        copyCallsign(mark.label, sizeof(mark.label), ap.icao);
-      } else {
-        copyCallsign(mark.label, sizeof(mark.label), ap.name);
-      }
-      aircraftOffsetMiles(centerLat_, centerLon_, ap.lat, ap.lon,
-                          mark.offsetXMi, mark.offsetYMi);
-    }
-
-    RingCandidate ringCands[24];
-    std::size_t ringCandCount = 0;
-    for (std::size_t i = 0; i < mapContext_.ringCount && ringCandCount < 24;
-         ++i) {
-      const MapAirspaceRing& ring = mapContext_.rings[i];
-      if (!ringIntersectsRange(ring, centerLat_, centerLon_, rangeMiles_)) {
-        continue;
-      }
-      double sumLat = 0.0;
-      double sumLon = 0.0;
-      for (uint8_t p = 0; p < ring.pointCount; ++p) {
-        sumLat += ring.pointsLat[p];
-        sumLon += ring.pointsLon[p];
-      }
-      const double centroidLat =
-          sumLat / static_cast<double>(ring.pointCount);
-      const double centroidLon =
-          sumLon / static_cast<double>(ring.pointCount);
-      ringCands[ringCandCount].sourceIndex = i;
-      ringCands[ringCandCount].centroidDistMi =
-          distanceMiles(centerLat_, centerLon_, centroidLat, centroidLon);
-      ringCands[ringCandCount].cls = ring.cls;
-      ++ringCandCount;
-    }
-    trimRingCandidates(ringCands, ringCandCount, kMaxAirspaceRingsView);
-    for (std::size_t i = 0; i < ringCandCount; ++i) {
-      const MapAirspaceRing& ring =
-          mapContext_.rings[ringCands[i].sourceIndex];
-      RadarAirspaceRingView& view = airspaceRings_[airspaceRingCount_++];
-      view.cls = ring.cls;
-      view.pointCount = ring.pointCount;
-      for (uint8_t p = 0; p < ring.pointCount; ++p) {
-        aircraftOffsetMiles(centerLat_, centerLon_, ring.pointsLat[p],
-                            ring.pointsLon[p], view.offsetXMi[p],
-                            view.offsetYMi[p]);
+      sortAirportCandidatesByDistance(airportIndices, airportDistances,
+                                      airportCandidateCount);
+      const std::size_t airportLimit =
+          airportCandidateCount > kMaxProjectedAirports ? kMaxProjectedAirports
+                                                        : airportCandidateCount;
+      for (std::size_t i = 0; i < airportLimit; ++i) {
+        const MapAirport& ap = mapContext_.airports[airportIndices[i]];
+        RadarStaticMark& mark = staticMarks_[staticMarkCount_++];
+        mark.kind = RadarStaticMark::Kind::Airport;
+        if (ap.icao[0] != '\0') {
+          copyCallsign(mark.label, sizeof(mark.label), ap.icao);
+        } else {
+          copyCallsign(mark.label, sizeof(mark.label), ap.name);
+        }
+        aircraftOffsetMiles(centerLat_, centerLon_, ap.lat, ap.lon,
+                            mark.offsetXMi, mark.offsetYMi);
       }
     }
 
-    for (std::size_t i = 0;
-         i < mapContext_.highwayCount && highwayCount_ < kMaxHighwaysView;
-         ++i) {
-      const MapHighway& hw = mapContext_.highways[i];
-      bool inRange = false;
-      for (uint8_t p = 0; p < hw.pointCount; ++p) {
-        const float dist = distanceMiles(centerLat_, centerLon_,
-                                         hw.pointsLat[p], hw.pointsLon[p]);
-        if (dist <= rangeMiles_ + 0.01f) {
-          inRange = true;
-          break;
+    if (settings_.showAirspace) {
+      RingCandidate ringCands[24];
+      std::size_t ringCandCount = 0;
+      for (std::size_t i = 0; i < mapContext_.ringCount && ringCandCount < 24;
+           ++i) {
+        const MapAirspaceRing& ring = mapContext_.rings[i];
+        if (!ringIntersectsRange(ring, centerLat_, centerLon_, rangeMiles_)) {
+          continue;
+        }
+        double sumLat = 0.0;
+        double sumLon = 0.0;
+        for (uint8_t p = 0; p < ring.pointCount; ++p) {
+          sumLat += ring.pointsLat[p];
+          sumLon += ring.pointsLon[p];
+        }
+        const double centroidLat =
+            sumLat / static_cast<double>(ring.pointCount);
+        const double centroidLon =
+            sumLon / static_cast<double>(ring.pointCount);
+        ringCands[ringCandCount].sourceIndex = i;
+        ringCands[ringCandCount].centroidDistMi =
+            distanceMiles(centerLat_, centerLon_, centroidLat, centroidLon);
+        ringCands[ringCandCount].cls = ring.cls;
+        ++ringCandCount;
+      }
+      trimRingCandidates(ringCands, ringCandCount, kMaxAirspaceRingsView);
+      for (std::size_t i = 0; i < ringCandCount; ++i) {
+        const MapAirspaceRing& ring =
+            mapContext_.rings[ringCands[i].sourceIndex];
+        RadarAirspaceRingView& view = airspaceRings_[airspaceRingCount_++];
+        view.cls = ring.cls;
+        view.pointCount = ring.pointCount;
+        for (uint8_t p = 0; p < ring.pointCount; ++p) {
+          aircraftOffsetMiles(centerLat_, centerLon_, ring.pointsLat[p],
+                              ring.pointsLon[p], view.offsetXMi[p],
+                              view.offsetYMi[p]);
         }
       }
-      if (!inRange) {
-        continue;
-      }
-      RadarHighwayView& view = highways_[highwayCount_++];
-      view.pointCount = hw.pointCount;
-      for (uint8_t p = 0; p < hw.pointCount; ++p) {
-        aircraftOffsetMiles(centerLat_, centerLon_, hw.pointsLat[p],
-                            hw.pointsLon[p], view.offsetXMi[p],
-                            view.offsetYMi[p]);
+    }
+
+    if (settings_.showRoads) {
+      for (std::size_t i = 0;
+           i < mapContext_.highwayCount && highwayCount_ < kMaxHighwaysView;
+           ++i) {
+        const MapHighway& hw = mapContext_.highways[i];
+        bool inRange = false;
+        for (uint8_t p = 0; p < hw.pointCount; ++p) {
+          const float dist = distanceMiles(centerLat_, centerLon_,
+                                           hw.pointsLat[p], hw.pointsLon[p]);
+          if (dist <= rangeMiles_ + 0.01f) {
+            inRange = true;
+            break;
+          }
+        }
+        if (!inRange) {
+          continue;
+        }
+        RadarHighwayView& view = highways_[highwayCount_++];
+        view.pointCount = hw.pointCount;
+        for (uint8_t p = 0; p < hw.pointCount; ++p) {
+          aircraftOffsetMiles(centerLat_, centerLon_, hw.pointsLat[p],
+                              hw.pointsLon[p], view.offsetXMi[p],
+                              view.offsetYMi[p]);
+        }
       }
     }
   }
 
-  for (std::size_t i = 0; i < poiCount_ && staticMarkCount_ < kMaxStaticMarks;
-       ++i) {
-    const StoredPoi& poi = pois_[i];
-    const float dist =
-        distanceMiles(centerLat_, centerLon_, poi.lat, poi.lon);
-    if (dist > rangeMiles_ + 0.01f) {
-      continue;
+  if (settings_.showAirports) {
+    for (std::size_t i = 0; i < poiCount_ && staticMarkCount_ < kMaxStaticMarks;
+         ++i) {
+      const StoredPoi& poi = pois_[i];
+      const float dist =
+          distanceMiles(centerLat_, centerLon_, poi.lat, poi.lon);
+      if (dist > rangeMiles_ + 0.01f) {
+        continue;
+      }
+      RadarStaticMark& mark = staticMarks_[staticMarkCount_++];
+      mark.kind = RadarStaticMark::Kind::Poi;
+      copyCallsign(mark.label, sizeof(mark.label), poi.name);
+      aircraftOffsetMiles(centerLat_, centerLon_, poi.lat, poi.lon,
+                          mark.offsetXMi, mark.offsetYMi);
     }
-    RadarStaticMark& mark = staticMarks_[staticMarkCount_++];
-    mark.kind = RadarStaticMark::Kind::Poi;
-    copyCallsign(mark.label, sizeof(mark.label), poi.name);
-    aircraftOffsetMiles(centerLat_, centerLon_, poi.lat, poi.lon,
-                        mark.offsetXMi, mark.offsetYMi);
   }
 
   if (hasStaticSelection_ && selectedStaticIndex_ >= staticMarkCount_) {

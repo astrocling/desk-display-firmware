@@ -36,6 +36,15 @@ static Airport loadAirportFixture() {
   return a;
 }
 
+static MapContext loadMapContextDaytonFixture() {
+  MapContext ctx{};
+  TEST_ASSERT_TRUE_MESSAGE(
+      loadFixture("map_context_dayton.json", g_buf, sizeof(g_buf)),
+      "load map_context_dayton.json");
+  TEST_ASSERT_TRUE(parseMapContext(g_buf, ctx));
+  return ctx;
+}
+
 /** Classic mode paints blips only as the sweep crosses them. */
 static void paintFullRevolution(ScreenRadar& screen) {
   screen.onTick(kRadarSweepPeriodMs);
@@ -644,6 +653,48 @@ void test_radar_static_select_clears_blip_select(void) {
   TEST_ASSERT_TRUE(r.hasSelection());
 }
 
+void test_radar_settings_gate_airports(void) {
+  ScreenRadar screen;
+  screen.bindMapContext(loadMapContextDaytonFixture());
+  const RadarPoi pois[] = {{"Home", kRadarHomeLat, kRadarHomeLon}};
+  screen.setPois(pois, 1);
+  TEST_ASSERT_TRUE(screen.view().staticMarkCount > 0);
+
+  RadarSettings s = screen.settings();
+  s.showAirports = false;
+  s.showAirspace = true;
+  s.showRoads = true;
+  screen.setSettings(s);
+  const RadarView v = screen.view();
+  for (std::size_t i = 0; i < v.staticMarkCount; ++i) {
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(RadarStaticMark::Kind::Airport),
+                          static_cast<int>(v.staticMarks[i].kind));
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(RadarStaticMark::Kind::Poi),
+                          static_cast<int>(v.staticMarks[i].kind));
+  }
+  TEST_ASSERT_TRUE(v.airspaceRingCount > 0 || v.highwayCount > 0);
+}
+
+void test_radar_settings_gate_airspace_and_roads(void) {
+  ScreenRadar screen;
+  screen.bindMapContext(loadMapContextDaytonFixture());
+  RadarSettings s = screen.settings();
+  s.showAirspace = false;
+  s.showRoads = false;
+  screen.setSettings(s);
+  const RadarView v = screen.view();
+  TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(v.airspaceRingCount));
+  TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(v.highwayCount));
+}
+
+void test_radar_idle_settle_closes_settings(void) {
+  ScreenRadar screen;
+  screen.openSettings();
+  TEST_ASSERT_TRUE(screen.settingsOpen());
+  screen.onIdleSettle();
+  TEST_ASSERT_FALSE(screen.settingsOpen());
+}
+
 void test_idle_settle_clears_selection_keeps_range(void) {
   ScreenRadar screen;
   screen.bind(loadAdsbFixture());
@@ -749,6 +800,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_map_context_url_from_radar_home);
   RUN_TEST(test_adsb_url_from_radar_home);
   RUN_TEST(test_idle_settle_clears_selection_keeps_range);
+  RUN_TEST(test_radar_settings_gate_airports);
+  RUN_TEST(test_radar_settings_gate_airspace_and_roads);
+  RUN_TEST(test_radar_idle_settle_closes_settings);
   RUN_TEST(test_radar_set_pois_adds_home_mark);
   RUN_TEST(test_radar_bind_map_context_projects_airport);
   RUN_TEST(test_radar_bind_map_context_projects_highways_and_shelves);

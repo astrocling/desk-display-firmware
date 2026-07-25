@@ -6,6 +6,7 @@
 #include "desk_display/map_context.hpp"
 #include "desk_display/radar.hpp"
 #include "desk_display/radar_poi.hpp"
+#include "desk_display/radar_settings.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -127,6 +128,8 @@ struct RadarView {
   std::size_t selectedIndex;
   RadarDetailCard detail;
   float sweepAngleDeg;
+  RadarSettings settings;
+  bool settingsOpen;
 };
 
 /**
@@ -234,8 +237,19 @@ class ScreenRadar {
    */
   void revertTempCenter();
 
-  /** Focused idle settle: clear blip selection only. */
+  /** Focused idle settle: close settings if open; clear blip selection. */
   void onIdleSettle();
+
+  const RadarSettings& settings() const { return settings_; }
+  void setSettings(const RadarSettings& s);
+  void setDeclutterMode(RadarDeclutterMode m);
+  void setShowAirports(bool show);
+  void setShowAirspace(bool show);
+  void setShowRoads(bool show);
+  void setDemoMode(bool demo);
+  bool settingsOpen() const { return settingsOpen_; }
+  void openSettings();
+  void closeSettings();
 
   RadarView view() const;
 
@@ -312,6 +326,9 @@ class ScreenRadar {
   std::size_t selectedStaticIndex_;
 
   float sweepAngleDeg_;
+
+  RadarSettings settings_{radarSettingsFactoryDefaults()};
+  bool settingsOpen_{false};
 };
 
 }  // namespace desk_display
