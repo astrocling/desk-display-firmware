@@ -45,5 +45,8 @@ venv/
 # Local brainstorm / agent session artifacts
 .superpowers/
 
+# Git worktrees (feature isolation)
+.worktrees/
+
 # Icon generation tooling (npm install --prefix support/weather_icon_tools)
 support/weather_icon_tools/node_modules/
