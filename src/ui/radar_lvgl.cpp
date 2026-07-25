@@ -188,18 +188,29 @@ bool airspace_dashed(desk_display::AirspaceClass cls) {
 }
 
 lv_obj_t* add_airspace_segment(lv_obj_t* layer, lv_coord_t x0, lv_coord_t y0,
-                               lv_coord_t x1, lv_coord_t y1, uint32_t color) {
-  if (g_airspace_seg_used >= kMaxAirspaceSegs) {
+                               lv_coord_t x1, lv_coord_t y1, uint32_t color,
+                               bool dashed) {
+  if (!layer || g_airspace_seg_used >= kMaxAirspaceSegs) {
     return nullptr;
   }
   g_airspace_seg_pts[g_airspace_seg_used][0] = {x0, y0};
   g_airspace_seg_pts[g_airspace_seg_used][1] = {x1, y1};
   lv_obj_t* line = lv_line_create(layer);
+  if (!line) {
+    // LVGL heap exhausted — stop creating segments rather than deref null.
+    return nullptr;
+  }
   lv_obj_set_pos(line, 0, 0);
   lv_line_set_points(line, g_airspace_seg_pts[g_airspace_seg_used], 2);
   lv_obj_set_style_line_width(line, 1, 0);
   lv_obj_set_style_line_color(line, rgb(color), 0);
   lv_obj_set_style_line_rounded(line, false, 0);
+  // One LVGL line per edge (with style dash). Manual dash sub-segments used to
+  // spawn hundreds of objects per ring and SIGSEGV inside lv_line_create.
+  if (dashed) {
+    lv_obj_set_style_line_dash_width(line, kAirspaceDashWidth, 0);
+    lv_obj_set_style_line_dash_gap(line, kAirspaceDashGap, 0);
+  }
   lv_obj_clear_flag(line, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
   ++g_airspace_seg_used;
@@ -208,38 +219,7 @@ lv_obj_t* add_airspace_segment(lv_obj_t* layer, lv_coord_t x0, lv_coord_t y0,
 
 void draw_airspace_edge(lv_obj_t* layer, lv_coord_t x0, lv_coord_t y0, lv_coord_t x1,
                         lv_coord_t y1, uint32_t color, bool dashed) {
-  if (!dashed) {
-    add_airspace_segment(layer, x0, y0, x1, y1, color);
-    return;
-  }
-
-  const float dx = static_cast<float>(x1 - x0);
-  const float dy = static_cast<float>(y1 - y0);
-  const float len = std::sqrt(dx * dx + dy * dy);
-  if (len < 0.5f) {
-    return;
-  }
-  const float ux = dx / len;
-  const float uy = dy / len;
-  const float dash = static_cast<float>(kAirspaceDashWidth);
-  const float gap = static_cast<float>(kAirspaceDashGap);
-  float pos = 0.0f;
-  bool drawing = true;
-  while (pos < len) {
-    const float segLen = drawing ? dash : gap;
-    const float next = pos + segLen;
-    if (drawing) {
-      const float t0 = pos;
-      const float t1 = next < len ? next : len;
-      add_airspace_segment(
-          layer, static_cast<lv_coord_t>(x0 + ux * t0),
-          static_cast<lv_coord_t>(y0 + uy * t0),
-          static_cast<lv_coord_t>(x0 + ux * t1),
-          static_cast<lv_coord_t>(y0 + uy * t1), color);
-    }
-    pos = next;
-    drawing = !drawing;
-  }
+  add_airspace_segment(layer, x0, y0, x1, y1, color, dashed);
 }
 
 void build_airspace(lv_obj_t* layer, const desk_display::RadarView& v) {
@@ -304,6 +284,9 @@ void build_highways(lv_obj_t* layer, const desk_display::RadarView& v) {
       g_highway_seg_pts[g_highway_seg_used][0] = {x0, y0};
       g_highway_seg_pts[g_highway_seg_used][1] = {x1, y1};
       lv_obj_t* line = lv_line_create(layer);
+      if (!line) {
+        return;
+      }
       lv_obj_set_pos(line, 0, 0);
       lv_line_set_points(line, g_highway_seg_pts[g_highway_seg_used], 2);
       lv_obj_set_style_line_width(line, 1, 0);

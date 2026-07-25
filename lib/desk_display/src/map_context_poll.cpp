@@ -78,7 +78,9 @@ MapContextPoller::PollAttemptResult MapContextPoller::tryPollOnce() {
   if (!httpGet_(url, body_, sizeof(body_), bodyLen, httpUser_)) {
     return PollAttemptResult::Retry;
   }
-  if (bodyLen >= sizeof(body_)) {
+  // Async transport reports terminal HTTP failures as true + empty body so we
+  // stop Retry-spamming (e.g. map/context 404) instead of hammering for 8s.
+  if (bodyLen == 0 || bodyLen >= sizeof(body_)) {
     return PollAttemptResult::HardFail;
   }
   body_[bodyLen] = '\0';

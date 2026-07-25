@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -70,14 +71,23 @@ AsyncSlot& mapContextSlot() {
 }
 
 void runAsyncGet(AsyncSlot* slot, std::string urlCopy) {
-  char localBody[kAsyncBodyCap];
+  // Heap buffer — a 256 KiB stack frame per detached worker was enough to
+  // blow the default thread stack when retries overlapped.
+  auto localBody = std::make_unique<char[]>(kAsyncBodyCap);
   std::size_t localLen = 0;
-  const bool ok = simHttpGet(urlCopy.c_str(), localBody, sizeof(localBody), localLen);
+  const bool ok =
+      simHttpGet(urlCopy.c_str(), localBody.get(), kAsyncBodyCap, localLen);
 
   std::lock_guard<std::mutex> lock(slot->mu);
   // Only publish if this worker still owns the in-flight URL.
-  if (slot->state != AsyncState::Busy ||
-      std::strcmp(slot->url, urlCopy.c_str()) != 0) {
+  if (slot->state != AsyncState::Busy) {
+    return;
+  }
+  if (std::strcmp(slot->url, urlCopy.c_str()) != 0) {
+    // URL was re-aimed while we were in flight — free the slot so the next
+    // poll can launch for the new URL (we no longer spawn a second worker).
+    slot->state = AsyncState::Idle;
+    slot->bodyLen = 0;
     return;
   }
   if (!ok || localLen >= sizeof(slot->body)) {
@@ -85,7 +95,7 @@ void runAsyncGet(AsyncSlot* slot, std::string urlCopy) {
     slot->bodyLen = 0;
     return;
   }
-  std::memcpy(slot->body, localBody, localLen);
+  std::memcpy(slot->body, localBody.get(), localLen);
   slot->bodyLen = localLen;
   slot->state = AsyncState::Ready;
 }
@@ -122,30 +132,30 @@ bool simAsyncHttpGet(AsyncSlot& slot, const char* url, char* body, std::size_t b
     }
 
     if (slot.state == AsyncState::Failed) {
-      // Consume the failure so the poller can budget another attempt / interval.
+      // Completed failure (HTTP error, etc.): report as an empty successful
+      // read so pollers can HardFail instead of Retry-spamming forever.
       slot.state = AsyncState::Idle;
       slot.bodyLen = 0;
-      return false;
+      bodyLen = 0;
+      return true;
     }
 
     if (slot.state == AsyncState::Busy) {
-      if (std::strcmp(slot.url, url) == 0) {
-        return false;  // still in flight for this URL
+      // Never launch a second worker while one is in flight — updating the URL
+      // makes the old worker no-op; the next Idle poll starts the new URL.
+      if (std::strcmp(slot.url, url) != 0) {
+        std::snprintf(slot.url, sizeof(slot.url), "%s", url);
+        slot.bodyLen = 0;
       }
-      // URL changed under an in-flight request: re-aim. The old worker will
-      // no-op on URL mismatch when it finishes; launch a replacement fetch.
-      std::snprintf(slot.url, sizeof(slot.url), "%s", url);
-      slot.bodyLen = 0;
-      launchUrl = slot.url;
-      launch = true;
-    } else {
-      // Idle: record the URL and hand work to a detached background GET.
-      std::snprintf(slot.url, sizeof(slot.url), "%s", url);
-      slot.bodyLen = 0;
-      slot.state = AsyncState::Busy;
-      launchUrl = slot.url;
-      launch = true;
+      return false;
     }
+
+    // Idle: record the URL and hand work to a detached background GET.
+    std::snprintf(slot.url, sizeof(slot.url), "%s", url);
+    slot.bodyLen = 0;
+    slot.state = AsyncState::Busy;
+    launchUrl = slot.url;
+    launch = true;
   }
 
   if (launch) {
