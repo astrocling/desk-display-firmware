@@ -11,9 +11,19 @@
 #define LV_COLOR_16_SWAP 0
 #endif
 
+#ifndef LV_MEM_CUSTOM
 #define LV_MEM_CUSTOM 0
+#endif
+
+#if LV_MEM_CUSTOM
+#define LV_MEM_CUSTOM_INCLUDE "lv_mem_psram.h"
+#define LV_MEM_CUSTOM_ALLOC lv_psram_alloc
+#define LV_MEM_CUSTOM_FREE lv_psram_free
+#define LV_MEM_CUSTOM_REALLOC lv_psram_realloc
+#else
 #ifndef LV_MEM_SIZE
 #define LV_MEM_SIZE (96U * 1024U)
+#endif
 #endif
 
 #define LV_DISP_DEF_REFR_PERIOD 16

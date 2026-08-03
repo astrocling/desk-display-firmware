@@ -63,6 +63,9 @@ desk_display::MapContextPoller* g_map_ctx_poll = nullptr;
 desk_display::MapContext* g_map_scratch = nullptr;
 desk_display::AircraftList* g_ac_scratch = nullptr;
 bool g_radar_http_used = false;
+/** Cap Classic sweep UI updates — full overlay rebuild every ~5ms OOMs LVGL. */
+uint32_t g_radar_ui_accum_ms = 0;
+constexpr uint32_t kRadarUiPeriodMs = 50;
 
 bool dialRadarHttpGet(const char* url, char* body, std::size_t bodyCap,
                       std::size_t& bodyLen, void* user) {
@@ -184,8 +187,16 @@ void rebuild_ui_for_active() {
     desk_ui::carousel_lvgl_set_highlight(g_carousel, g_nav.highlighted());
   }
 
+  if (carousel_mode) {
+    desk_ui::carousel_lvgl_set_highlight(g_carousel, g_nav.highlighted());
+  }
+
   g_last_screen = g_nav.active_screen();
   g_last_mode = g_nav.mode();
+  if (g_last_screen == desk_display::Screen::Radar) {
+    Serial.printf("shell: build Radar mode=%s\n",
+                  carousel_mode ? "carousel" : "focused");
+  }
   refresh_content();
   publishNavSerial();
 }
@@ -377,7 +388,16 @@ void dialShellOnTick(uint32_t elapsed_ms) {
   g_map_ctx_poll->onTick(elapsed_ms);
   g_adsb_poll->onTick(elapsed_ms);
 
-  bool radar_dirty = radar_active;
+  bool radar_dirty = false;
+  if (radar_active) {
+    g_radar_ui_accum_ms += elapsed_ms;
+    if (g_radar_ui_accum_ms >= kRadarUiPeriodMs) {
+      g_radar_ui_accum_ms = 0;
+      radar_dirty = true;
+    }
+  } else {
+    g_radar_ui_accum_ms = 0;
+  }
 
   // Scratch lives in PSRAM — MapContext (~24KB) must not sit on the 24KB loop stack.
   if (g_map_ctx_poll->takeContext(*g_map_scratch)) {
