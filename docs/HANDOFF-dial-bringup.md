@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-03  
 **Repo:** `/Users/bruceclingan/Projects/desktop-display-firmware`  
-**Branch:** `main` — Weather + Sports + **Radar** ported (shared `weather_lvgl` / `sports_lvgl` / `radar_lvgl` + Dial HTTP). Uncommitted/local unless asked to commit/push.
+**Branch:** `main` — Weather + Sports + **Radar** ported (shared `weather_lvgl` / `sports_lvgl` / `radar_lvgl` + Dial HTTP). All three are committed on `main`; push to `origin` when ready.
 
 ## Device status (confirmed)
 
@@ -13,10 +13,10 @@
 - SNTP (`pool.ntp.org`) after Wi‑Fi → `ntp: synced`
 - Weather: `GET /api/weather` while Weather is active screen → Serial `http: GET … ok` / `weather: bound`
 - Sports: `GET /api/scores` while Sports is active screen → Serial `http: GET … ok` / `scores: bound`
-- Radar: while Radar is active screen → adsb.lol + backend `/api/map-context` via `dialRadarHttpGet` (≤1 GET/tick; map preferred) → Serial `adsb: bound` / `map: bound`. **Flashed; Serial bind verify recommended** (bind lines not fully monitored post-flash).
+- Radar: while Radar is active screen → backend `/api/map-context` + adsb.lol via `dialRadarHttpGet` (≤1 GET/tick; map preferred) → Serial `map: bound` / `adsb: bound`. **Flashed; Serial bind verify recommended** (bind lines not fully monitored post-flash).
 - **Carousel reboot fix:** blocking HTTPS was overflowing the default 8KB Arduino loop stack when landing on Weather. Dial now uses `-DARDUINO_LOOP_STACK_SIZE=24576`, heap-allocated `WiFiClientSecure`, and rebuilds UI before poll (`src/net/http.cpp`, `platformio.ini`, `dial_shell.cpp`). **Retested:** carousel both directions without reboot; Weather bind OK.
 - **Scores TLS OOM:** a 64KB BSS body in `ScoresPoller` left too little heap for mbedTLS (`SSL - Memory allocation failed`). Body is now 8KB, heap-allocated per poll (`scores_poll.*`).
-- **Radar pollers:** ADS-B + map-context bodies are 64KB, heap-allocated per poll (`adsb_poll.*`, `map_context_poll.*`) — same pattern as scores fix.
+- **Radar pollers:** ADS-B + map-context bodies are **64KB** heap-allocated per poll (`adsb_poll.*`, `map_context_poll.*`). Scores uses an **8KB** body (TLS OOM fix above).
 - Theme `kBg` (green bring-up gone)
 
 ## Input model (locked)
@@ -47,7 +47,7 @@ pio run -e dial -t upload --upload-port /dev/cu.usbmodem*
 # Serial: wifi → display: ready → encoder/touch → ntp: syncing/synced → nav: Focused Clock
 # Focus Weather: http: GET …/api/weather ok → weather: bound
 # Focus Sports: http: GET …/api/scores ok → scores: bound
-# Focus Radar: http: GET … ok → map: bound / adsb: bound (verify after flash)
+# Focus Radar: http: GET … ok → map: bound → adsb: bound (verify after flash)
 ```
 
 Native: `pio test -e native` · Sim: `pio run -e sim`
