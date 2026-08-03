@@ -14,6 +14,7 @@
 #include "desk_display/scrub.hpp"
 #include "desk_display/timezone_status.hpp"
 #include "desk_display/weather_icons.hpp"
+#include "desk_display/wifi_policy.hpp"
 
 using namespace desk_display;
 
@@ -506,6 +507,21 @@ void test_radar_offset_and_distance(void) {
   TEST_ASSERT_TRUE(d2 > 5.0f && d2 < 10.0f);
 }
 
+void test_wifi_placeholder_ssid(void) {
+  TEST_ASSERT_TRUE(desk_display::isPlaceholderWifiSsid(nullptr));
+  TEST_ASSERT_TRUE(desk_display::isPlaceholderWifiSsid(""));
+  TEST_ASSERT_TRUE(desk_display::isPlaceholderWifiSsid("your-ssid"));
+  TEST_ASSERT_FALSE(desk_display::isPlaceholderWifiSsid("home-net"));
+}
+
+void test_wifi_retry_backoff(void) {
+  TEST_ASSERT_EQUAL_UINT32(5000u, desk_display::nextWifiRetryDelayMs(0));
+  TEST_ASSERT_EQUAL_UINT32(10000u, desk_display::nextWifiRetryDelayMs(5000));
+  TEST_ASSERT_EQUAL_UINT32(20000u, desk_display::nextWifiRetryDelayMs(10000));
+  TEST_ASSERT_EQUAL_UINT32(30000u, desk_display::nextWifiRetryDelayMs(20000));
+  TEST_ASSERT_EQUAL_UINT32(30000u, desk_display::nextWifiRetryDelayMs(30000));
+}
+
 void setUp(void) {}
 void tearDown(void) {}
 
@@ -537,5 +553,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_scores_poller_only_when_active);
   RUN_TEST(test_scores_poller_waits_full_interval_after_success);
   RUN_TEST(test_mlb_live_format_helpers);
+  RUN_TEST(test_wifi_placeholder_ssid);
+  RUN_TEST(test_wifi_retry_backoff);
   return UNITY_END();
 }
