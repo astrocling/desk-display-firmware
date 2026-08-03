@@ -31,4 +31,7 @@ bool simMapContextHttpGet(const char* url, char* body, std::size_t bodyCap,
 bool simScoresHttpGet(const char* url, char* body, std::size_t bodyCap, std::size_t& bodyLen,
                       void* user);
 
+bool simWeatherHttpGet(const char* url, char* body, std::size_t bodyCap, std::size_t& bodyLen,
+                       void* user);
+
 }  // namespace sim

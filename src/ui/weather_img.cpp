@@ -2,6 +2,8 @@
 
 #include "assets/weather/weather_icons_assets.h"
 
+namespace desk_ui {
+
 const lv_img_dsc_t* weatherIconImg(desk_display::WeatherIconId id) {
   using desk_display::WeatherIconId;
   switch (id) {
@@ -28,3 +30,5 @@ const lv_img_dsc_t* weatherIconImg(desk_display::WeatherIconId id) {
       return &weather_icon_unknown;
   }
 }
+
+}  // namespace desk_ui

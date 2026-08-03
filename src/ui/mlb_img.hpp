@@ -1,6 +1,8 @@
 #pragma once
 
-#include "lvgl.h"
+#include <lvgl.h>
+
+namespace desk_ui {
 
 /**
  * LVGL image descriptor for a vendored MLB team logo, keyed by ESPN
@@ -9,3 +11,5 @@
  * teams.
  */
 const lv_img_dsc_t* mlbTeamLogoImg(const char* abbr);
+
+}  // namespace desk_ui

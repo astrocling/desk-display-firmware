@@ -4,6 +4,7 @@
 
 #include <cctype>
 
+namespace desk_ui {
 namespace {
 
 bool equalsIgnoreCase(const char* a, const char* b) {
@@ -49,3 +50,5 @@ const lv_img_dsc_t* mlbTeamLogoImg(const char* abbr) {
   }
   return nullptr;
 }
+
+}  // namespace desk_ui

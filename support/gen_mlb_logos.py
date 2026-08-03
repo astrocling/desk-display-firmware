@@ -2,7 +2,7 @@
 """Convert vendored MLB logo PNGs into LVGL 8 TRUE_COLOR_ALPHA C arrays.
 
 Reads `assets/mlb/png/{ABBR}.png` (see `support/fetch_mlb_logos.py`) and
-emits one `.c` file per team under `src/sim/assets/mlb/`, plus a
+emits one `.c` file per team under `src/ui/assets/mlb/`, plus a
 `mlb_logos_assets.h` header declaring `extern const lv_img_dsc_t` for each.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PNG_DIR = ROOT / "assets" / "mlb" / "png"
-OUT_DIR = ROOT / "src" / "sim" / "assets" / "mlb"
+OUT_DIR = ROOT / "src" / "ui" / "assets" / "mlb"
 
 # ESPN abbreviations, matching support/fetch_mlb_logos.py and the firmware
 # view-model's teamAbbr/opponentAbbr values.

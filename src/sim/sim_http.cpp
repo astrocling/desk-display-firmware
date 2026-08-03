@@ -75,6 +75,11 @@ AsyncSlot& scoresSlot() {
   return *slot;
 }
 
+AsyncSlot& weatherSlot() {
+  static AsyncSlot* slot = new AsyncSlot();
+  return *slot;
+}
+
 void runAsyncGet(AsyncSlot* slot, std::string urlCopy) {
   // Heap buffer — a 256 KiB stack frame per detached worker was enough to
   // blow the default thread stack when retries overlapped.
@@ -229,6 +234,11 @@ bool simMapContextHttpGet(const char* url, char* body, std::size_t bodyCap,
 bool simScoresHttpGet(const char* url, char* body, std::size_t bodyCap, std::size_t& bodyLen,
                       void* /*user*/) {
   return simAsyncHttpGet(scoresSlot(), url, body, bodyCap, bodyLen);
+}
+
+bool simWeatherHttpGet(const char* url, char* body, std::size_t bodyCap, std::size_t& bodyLen,
+                       void* /*user*/) {
+  return simAsyncHttpGet(weatherSlot(), url, body, bodyCap, bodyLen);
 }
 
 }  // namespace sim

@@ -1,7 +1,12 @@
 #pragma once
 
 #include "desk_display/weather_icons.hpp"
-#include "lvgl.h"
+
+#include <lvgl.h>
+
+namespace desk_ui {
 
 /** LVGL image descriptor for a weather icon id (Meteocons monochrome). */
 const lv_img_dsc_t* weatherIconImg(desk_display::WeatherIconId id);
+
+}  // namespace desk_ui

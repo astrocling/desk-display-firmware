@@ -11,14 +11,13 @@
 #include "desk_display/theme.hpp"
 #include "desk_display/timezones.hpp"
 #include "desk_display/weather.hpp"
-#include "desk_display/weather_icons.hpp"
-#include "mlb_img.hpp"
 #include "sim_http.hpp"
-#include "weather_img.hpp"
 
 #include "../ui/clock_lvgl.hpp"
 #include "../ui/radar_lvgl.hpp"
+#include "../ui/sports_lvgl.hpp"
 #include "../ui/timezones_lvgl.hpp"
+#include "../ui/weather_lvgl.hpp"
 
 #if __has_include("config.h")
 #include "config.h"
@@ -48,6 +47,7 @@ bool SimApp::init() {
   adsb_poll_.setHttpGet(&sim::simAdsbHttpGet, nullptr);
   map_ctx_poll_.setHttpGet(&sim::simMapContextHttpGet, nullptr);
   scores_poll_.setHttpGet(&sim::simScoresHttpGet, nullptr);
+  weather_poll_.setHttpGet(&sim::simWeatherHttpGet, nullptr);
 
   root_ = lv_obj_create(lv_scr_act());
   lv_obj_set_size(root_, kDispW, kDispH);
@@ -214,362 +214,12 @@ void SimApp::refresh_content() {
       desk_ui::timezones_lvgl_build(body_, timezones_.view(),
                                     static_cast<lv_coord_t>(kDispH - 48));
       break;
-    case Screen::Weather: {
-      const auto v = weather_.view();
-      if (!v.ready) {
-        lv_obj_t* lab = lv_label_create(body_);
-        lv_label_set_text(lab, "Weather not ready");
-        lv_obj_center(lab);
-        break;
-      }
-
-      char hl[48];
-      std::snprintf(hl, sizeof(hl), "H %.0f  L %.0f", static_cast<double>(v.todayHigh),
-                    static_cast<double>(v.todayLow));
-      lv_obj_t* hl_lab = lv_label_create(body_);
-      lv_label_set_text(hl_lab, hl);
-      lv_obj_set_style_text_color(hl_lab, rgb(desk_display::theme::kAccent), 0);
-      lv_obj_set_style_text_font(hl_lab, &lv_font_montserrat_12, 0);
-      lv_obj_align(hl_lab, LV_ALIGN_TOP_MID, 0, 4);
-
-      lv_obj_t* when = lv_label_create(body_);
-      lv_label_set_text(when, v.whenLabel);
-      lv_obj_set_style_text_color(when, rgb(desk_display::theme::kDim), 0);
-      lv_obj_set_style_text_font(when, &lv_font_montserrat_12, 0);
-      lv_obj_align(when, LV_ALIGN_CENTER, 0, -70);
-
-      lv_obj_t* row = lv_obj_create(body_);
-      lv_obj_set_size(row, 200, 48);
-      lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-      lv_obj_set_style_border_width(row, 0, 0);
-      lv_obj_set_style_pad_all(row, 0, 0);
-      lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-      lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                            LV_FLEX_ALIGN_CENTER);
-      lv_obj_set_style_pad_column(row, 8, 0);
-      lv_obj_align(row, LV_ALIGN_CENTER, 0, -28);
-
-      lv_obj_t* icon = lv_img_create(row);
-      lv_img_set_src(icon, weatherIconImg(v.icon));
-
-      char tbuf[32];
-      std::snprintf(tbuf, sizeof(tbuf), "%.0f°", static_cast<double>(v.displayTemp));
-      lv_obj_t* temp = lv_label_create(row);
-      lv_label_set_text(temp, tbuf);
-      lv_obj_set_style_text_font(temp, &lv_font_montserrat_28, 0);
-      lv_obj_set_style_text_color(temp, rgb(0xFFFFFF), 0);
-
-      char feels_buf[32];
-      std::snprintf(feels_buf, sizeof(feels_buf), "feels %.0f°",
-                    static_cast<double>(v.feelsLike));
-      lv_obj_t* feels = lv_label_create(body_);
-      lv_label_set_text(feels, feels_buf);
-      lv_obj_set_style_text_color(feels, rgb(desk_display::theme::kDim), 0);
-      lv_obj_set_style_text_font(feels, &lv_font_montserrat_12, 0);
-      lv_obj_align(feels, LV_ALIGN_CENTER, 0, 10);
-
-      if (v.alertBadge) {
-        lv_obj_t* alert = lv_label_create(body_);
-        lv_label_set_text(alert, v.alertDetailOpen && v.alertHeadline ? v.alertHeadline : "ALERT");
-        lv_obj_set_style_text_color(alert, rgb(desk_display::theme::kAlert), 0);
-        lv_obj_set_style_text_font(alert, &lv_font_montserrat_12, 0);
-        lv_obj_align(alert, LV_ALIGN_CENTER, 0, 36);
-      }
-
-      // Hourly strip along the bottom
-      lv_obj_t* strip = lv_obj_create(body_);
-      lv_obj_set_size(strip, 280, 70);
-      lv_obj_set_style_bg_opa(strip, LV_OPA_TRANSP, 0);
-      lv_obj_set_style_border_width(strip, 0, 0);
-      lv_obj_set_style_pad_all(strip, 0, 0);
-      lv_obj_clear_flag(strip, LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
-      lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                            LV_FLEX_ALIGN_CENTER);
-      lv_obj_align(strip, LV_ALIGN_BOTTOM_MID, 0, -4);
-
-      for (std::size_t i = 0; i < v.stripCount; ++i) {
-        const auto& slot = v.strip[i];
-        if (!slot.valid) {
-          continue;
-        }
-        lv_obj_t* cell = lv_obj_create(strip);
-        lv_obj_set_size(cell, 48, 66);
-        lv_obj_set_style_radius(cell, 6, 0);
-        lv_obj_set_style_border_width(cell, 0, 0);
-        lv_obj_set_style_pad_all(cell, 2, 0);
-        lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
-        if (slot.selected) {
-          lv_obj_set_style_bg_color(cell, rgb(desk_display::theme::kAccent), 0);
-          lv_obj_set_style_bg_opa(cell, LV_OPA_30, 0);
-        } else {
-          lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
-        }
-        lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                              LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_row(cell, 2, 0);
-
-        lv_obj_t* simg = lv_img_create(cell);
-        lv_img_set_src(simg, weatherIconImg(slot.icon));
-        lv_img_set_zoom(simg, 102);  // ~16px from 40px (256 = 100%)
-
-        lv_obj_t* hour_lab = lv_label_create(cell);
-        lv_label_set_text(hour_lab, slot.hourDigit);
-        lv_obj_set_style_text_font(hour_lab, &lv_font_montserrat_12, 0);
-        lv_obj_set_style_text_color(hour_lab, rgb(desk_display::theme::kDim), 0);
-
-        char st[16];
-        std::snprintf(st, sizeof(st), "%.0f°", static_cast<double>(slot.temp));
-        lv_obj_t* stemp = lv_label_create(cell);
-        lv_label_set_text(stemp, st);
-        lv_obj_set_style_text_font(stemp, &lv_font_montserrat_12, 0);
-        lv_obj_set_style_text_color(stemp, rgb(0xFFFFFF), 0);
-      }
+    case Screen::Weather:
+      desk_ui::weather_lvgl_build(body_, weather_.view());
       break;
-    }
-    case Screen::Sports: {
-      const auto v = sports_.view();
-      if (!v.ready) {
-        lv_obj_t* lab = lv_label_create(body_);
-        lv_label_set_text(lab, "Scores not ready");
-        lv_obj_center(lab);
-        break;
-      }
-
-      if (v.card == desk_display::SportsCard::Mlb) {
-        const bool nextGameCard = !v.mlb.live && (v.mlb.hasMatchup || v.mlb.hasNextGame);
-
-        if (v.mlb.live) {
-          lv_obj_t* col = lv_obj_create(body_);
-          lv_obj_set_size(col, 280, 260);
-          lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
-          lv_obj_set_style_border_width(col, 0, 0);
-          lv_obj_set_style_pad_all(col, 0, 0);
-          lv_obj_set_style_pad_row(col, 6, 0);
-          lv_obj_clear_flag(col, LV_OBJ_FLAG_SCROLLABLE);
-          lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-          lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                                LV_FLEX_ALIGN_CENTER);
-          lv_obj_center(col);
-
-          lv_obj_t* title = lv_label_create(col);
-          lv_label_set_text(title, "LIVE");
-          lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-          lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
-
-          auto add_line = [&](const char* text, bool dim, const lv_font_t* font) {
-            if (!text || text[0] == '\0') {
-              return;
-            }
-            lv_obj_t* lab = lv_label_create(col);
-            lv_label_set_long_mode(lab, LV_LABEL_LONG_WRAP);
-            lv_obj_set_width(lab, 280);
-            lv_label_set_text(lab, text);
-            if (font) {
-              lv_obj_set_style_text_font(lab, font, 0);
-            }
-            lv_obj_set_style_text_color(
-                lab, rgb(dim ? desk_display::theme::kDim : 0xFFFFFF), 0);
-            lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
-          };
-
-          if (v.mlb.showLiveScorebug) {
-            // Side-by-side: team logo + runs | opponent runs + logo
-            lv_obj_t* matchup = lv_obj_create(col);
-            lv_obj_set_size(matchup, 280, 56);
-            lv_obj_set_style_bg_opa(matchup, LV_OPA_TRANSP, 0);
-            lv_obj_set_style_border_width(matchup, 0, 0);
-            lv_obj_set_style_pad_all(matchup, 0, 0);
-            lv_obj_set_style_pad_column(matchup, 10, 0);
-            lv_obj_clear_flag(matchup, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_set_flex_flow(matchup, LV_FLEX_FLOW_ROW);
-            lv_obj_set_flex_align(matchup, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                                  LV_FLEX_ALIGN_CENTER);
-
-            auto add_logo = [&](const char* abbr) {
-              const lv_img_dsc_t* logo = mlbTeamLogoImg(abbr);
-              if (logo) {
-                lv_obj_t* img = lv_img_create(matchup);
-                lv_img_set_src(img, logo);
-                lv_img_set_zoom(img, 200);  // ~44px from 56px
-              } else {
-                lv_obj_t* lab = lv_label_create(matchup);
-                lv_label_set_text(lab, (abbr && abbr[0]) ? abbr : "?");
-                lv_obj_set_style_text_font(lab, &lv_font_montserrat_20, 0);
-                lv_obj_set_style_text_color(lab, rgb(0xFFFFFF), 0);
-              }
-            };
-
-            auto add_runs = [&](int runs) {
-              char runsBuf[8];
-              std::snprintf(runsBuf, sizeof(runsBuf), "%d", runs);
-              lv_obj_t* runsLab = lv_label_create(matchup);
-              lv_label_set_text(runsLab, runsBuf);
-              lv_obj_set_style_text_font(runsLab, &lv_font_montserrat_28, 0);
-              lv_obj_set_style_text_color(runsLab, rgb(0xFFFFFF), 0);
-            };
-
-            add_logo(v.mlb.teamAbbr);
-            add_runs(v.mlb.teamRuns);
-
-            lv_obj_t* sep = lv_label_create(matchup);
-            lv_label_set_text(sep, "-");
-            lv_obj_set_style_text_font(sep, &lv_font_montserrat_20, 0);
-            lv_obj_set_style_text_color(sep, rgb(desk_display::theme::kDim), 0);
-
-            add_runs(v.mlb.opponentRuns);
-            add_logo(v.mlb.opponentAbbr);
-
-            add_line(v.mlb.hasInning ? v.mlb.inning : "", true, nullptr);
-            add_line(v.mlb.countLine, true, &lv_font_montserrat_14);
-
-            // Classic 4-diamond: 2nd top, 3rd left, 1st right, home bottom.
-            // Empty bases use a dim fill so all four diamonds stay visible.
-            lv_obj_t* diamond = lv_obj_create(col);
-            lv_obj_set_size(diamond, 48, 48);
-            lv_obj_set_style_bg_opa(diamond, LV_OPA_TRANSP, 0);
-            lv_obj_set_style_border_width(diamond, 0, 0);
-            lv_obj_set_style_pad_all(diamond, 0, 0);
-            lv_obj_clear_flag(diamond, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_add_flag(diamond, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-
-            auto add_base = [&](lv_coord_t x, lv_coord_t y, bool occupied) {
-              constexpr lv_coord_t kSize = 12;
-              lv_obj_t* base = lv_obj_create(diamond);
-              lv_obj_remove_style_all(base);
-              lv_obj_set_size(base, kSize, kSize);
-              lv_obj_set_pos(base, x, y);
-              lv_obj_set_style_radius(base, 0, 0);
-              lv_obj_set_style_border_width(base, 0, 0);
-              lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
-              lv_obj_set_style_bg_color(
-                  base, rgb(occupied ? 0xFFFFFF : desk_display::theme::kDim), 0);
-              lv_obj_set_style_transform_pivot_x(base, kSize / 2, 0);
-              lv_obj_set_style_transform_pivot_y(base, kSize / 2, 0);
-              lv_obj_set_style_transform_angle(base, 450, 0);  // 45°
-              lv_obj_clear_flag(base, LV_OBJ_FLAG_SCROLLABLE);
-            };
-
-            add_base(18, 4, v.mlb.onSecond);   // 2nd
-            add_base(4, 18, v.mlb.onThird);    // 3rd
-            add_base(32, 18, v.mlb.onFirst);   // 1st
-            add_base(18, 32, false);           // home (always empty)
-
-            add_line(v.mlb.batterPitcherLine, true, &lv_font_montserrat_12);
-          } else {
-            add_line(v.mlb.primary, false, &lv_font_montserrat_28);
-            add_line(v.mlb.secondary, true, nullptr);
-          }
-        } else {
-          // Vertically centered card: title + (logo hero or matchup text) +
-          // whenEt/record/standing, all in one flex column (no top y-stack).
-          lv_obj_t* col = lv_obj_create(body_);
-          lv_obj_set_size(col, 280, 220);
-          lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
-          lv_obj_set_style_border_width(col, 0, 0);
-          lv_obj_set_style_pad_all(col, 0, 0);
-          lv_obj_set_style_pad_row(col, 6, 0);
-          lv_obj_clear_flag(col, LV_OBJ_FLAG_SCROLLABLE);
-          lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-          lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                                LV_FLEX_ALIGN_CENTER);
-          lv_obj_center(col);
-
-          lv_obj_t* title = lv_label_create(col);
-          lv_label_set_text(title, nextGameCard ? "Next Game" : "MLB");
-          lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-          lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
-
-          auto add_line = [&](const char* text, bool dim, const lv_font_t* font) {
-            if (!text || text[0] == '\0') {
-              return;
-            }
-            lv_obj_t* lab = lv_label_create(col);
-            lv_label_set_long_mode(lab, LV_LABEL_LONG_WRAP);
-            lv_obj_set_width(lab, 280);
-            lv_label_set_text(lab, text);
-            if (font) {
-              lv_obj_set_style_text_font(lab, font, 0);
-            }
-            lv_obj_set_style_text_color(
-                lab, rgb(dim ? desk_display::theme::kDim : 0xFFFFFF), 0);
-            lv_obj_set_style_text_align(lab, LV_TEXT_ALIGN_CENTER, 0);
-          };
-
-          if (v.mlb.showLogoHero) {
-            lv_obj_t* hero = lv_obj_create(col);
-            lv_obj_set_size(hero, 280, 60);
-            lv_obj_set_style_bg_opa(hero, LV_OPA_TRANSP, 0);
-            lv_obj_set_style_border_width(hero, 0, 0);
-            lv_obj_set_style_pad_all(hero, 0, 0);
-            lv_obj_set_style_pad_column(hero, 10, 0);
-            lv_obj_clear_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_ROW);
-            lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                                  LV_FLEX_ALIGN_CENTER);
-
-            auto add_team_slot = [&](const char* abbr) {
-              const lv_img_dsc_t* logo = mlbTeamLogoImg(abbr);
-              if (logo) {
-                lv_obj_t* img = lv_img_create(hero);
-                lv_img_set_src(img, logo);
-              } else {
-                lv_obj_t* lab = lv_label_create(hero);
-                lv_label_set_text(lab, (abbr && abbr[0]) ? abbr : "?");
-                lv_obj_set_style_text_font(lab, &lv_font_montserrat_20, 0);
-                lv_obj_set_style_text_color(lab, rgb(0xFFFFFF), 0);
-              }
-            };
-
-            add_team_slot(v.mlb.teamAbbr);
-
-            lv_obj_t* conn = lv_label_create(hero);
-            lv_label_set_text(conn, v.mlb.hasConnector ? v.mlb.connector : "@");
-            lv_obj_set_style_text_font(conn, &lv_font_montserrat_16, 0);
-            lv_obj_set_style_text_color(conn, rgb(desk_display::theme::kDim), 0);
-
-            add_team_slot(v.mlb.opponentAbbr);
-          } else {
-            add_line(v.mlb.hasMatchup ? v.mlb.matchup : v.mlb.primary, false,
-                     &lv_font_montserrat_16);
-          }
-
-          add_line(v.mlb.hasWhenEt ? v.mlb.whenEt : v.mlb.secondary, true, nullptr);
-          add_line(v.mlb.hasRecord ? v.mlb.record : "", false, nullptr);
-          add_line(v.mlb.hasStandingLine ? v.mlb.standingLine : "", true, nullptr);
-        }
-      } else {
-        lv_obj_t* title = lv_label_create(body_);
-        lv_label_set_text(title, "Flagstand");
-        lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-        lv_obj_set_style_text_color(title, rgb(desk_display::theme::kAccent), 0);
-        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
-
-        lv_obj_t* primary = lv_label_create(body_);
-        lv_label_set_long_mode(primary, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(primary, 280);
-        lv_label_set_text(primary, v.flagstand.lastResultSummary);
-        lv_obj_set_style_text_color(primary, rgb(0xFFFFFF), 0);
-        lv_obj_align(primary, LV_ALIGN_CENTER, 0, -10);
-
-        lv_obj_t* secondary = lv_label_create(body_);
-        lv_label_set_long_mode(secondary, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(secondary, 280);
-        lv_label_set_text(secondary, v.flagstand.nextRaceSummary);
-        lv_obj_set_style_text_color(secondary, rgb(desk_display::theme::kDim), 0);
-        lv_obj_align(secondary, LV_ALIGN_CENTER, 0, 40);
-      }
-
-      if (v.detail) {
-        lv_obj_t* d = lv_label_create(body_);
-        lv_label_set_text(d, "(detail)");
-        lv_obj_set_style_text_color(d, rgb(desk_display::theme::kAlert), 0);
-        lv_obj_align(d, LV_ALIGN_BOTTOM_MID, 0, -4);
-      }
+    case Screen::Sports:
+      desk_ui::sports_lvgl_build(body_, sports_.view());
       break;
-    }
     case Screen::Radar: {
       desk_ui::radar_lvgl_build(body_, radar_.view());
       break;
@@ -791,10 +441,12 @@ void SimApp::update(uint32_t elapsed_ms) {
   // also only advances while Radar is visible.
   const bool radar_active = nav_.active_screen() == Screen::Radar;
   const bool sports_active = nav_.active_screen() == Screen::Sports;
+  const bool weather_active = nav_.active_screen() == Screen::Weather;
   const bool demo_mode = radar_.settings().demoMode;
   adsb_poll_.setActive(radar_active && !demo_mode);
   map_ctx_poll_.setActive(radar_active);
   scores_poll_.setActive(sports_active);
+  weather_poll_.setActive(weather_active);
   if (radar_active) {
     radar_.onTick(elapsed_ms);
     const double lat = radar_.centerLat();
@@ -806,6 +458,7 @@ void SimApp::update(uint32_t elapsed_ms) {
   adsb_poll_.onTick(elapsed_ms);
   map_ctx_poll_.onTick(elapsed_ms);
   scores_poll_.onTick(elapsed_ms);
+  weather_poll_.onTick(elapsed_ms);
 
   AircraftList fresh{};
   const bool got_fresh = adsb_poll_.takeAircraft(fresh);
@@ -825,11 +478,17 @@ void SimApp::update(uint32_t elapsed_ms) {
     sports_.bind(freshScores);
   }
 
+  desk_display::Weather freshWeather{};
+  const bool got_weather = weather_poll_.takeWeather(freshWeather);
+  if (got_weather) {
+    weather_.bind(freshWeather);
+  }
+
   if (nav_.active_screen() != last_screen_ || nav_.mode() != last_mode_) {
     rebuild_ui_for_active();
   } else if (idle == desk_display::IdleEvent::SettleFocused || got_fresh || got_map_ctx ||
-             got_scores || radar_active) {
-    // Refresh on settle (so cleared overlays render), when live scores land,
+             got_scores || got_weather || radar_active) {
+    // Refresh on settle (so cleared overlays render), when live data lands,
     // and every tick while Radar is up so the sweep keeps moving.
     refresh_content();
   }

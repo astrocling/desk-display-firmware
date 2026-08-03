@@ -2,6 +2,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 
 namespace desk_display {
 
@@ -64,17 +66,23 @@ bool ScoresPoller::tryPollOnce() {
     return false;
   }
 
+  // Heap buffer: keep BSS small so Dial TLS (mbedTLS) can allocate.
+  auto body = std::unique_ptr<char[]>(new (std::nothrow) char[kBodyCap]);
+  if (!body) {
+    return false;
+  }
+
   std::size_t bodyLen = 0;
-  if (!httpGet_(url, body_, sizeof(body_), bodyLen, httpUser_)) {
+  if (!httpGet_(url, body.get(), kBodyCap, bodyLen, httpUser_)) {
     return false;
   }
-  if (bodyLen >= sizeof(body_)) {
+  if (bodyLen >= kBodyCap) {
     return false;
   }
-  body_[bodyLen] = '\0';
+  body[bodyLen] = '\0';
 
   Scores parsed{};
-  if (!parseScores(body_, parsed)) {
+  if (!parseScores(body.get(), parsed)) {
     return false;
   }
 

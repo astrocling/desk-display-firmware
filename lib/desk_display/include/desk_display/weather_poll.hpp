@@ -1,24 +1,24 @@
 #pragma once
 
 #include "desk_display/adsb_poll.hpp"
-#include "desk_display/scores.hpp"
+#include "desk_display/weather.hpp"
 
 #include <cstddef>
 #include <cstdint>
 
 namespace desk_display {
 
-/** Cadence between successful binds while Sports is the active screen. */
-constexpr uint32_t kScoresPollIntervalMs = 30000;
+/** Cadence between successful binds while Weather is the active screen. */
+constexpr uint32_t kWeatherPollIntervalMs = 5 * 60 * 1000;
 
-bool buildScoresUrl(char* buf, std::size_t bufLen);
+bool buildWeatherUrl(char* buf, std::size_t bufLen);
 
-class ScoresPoller {
+class WeatherPoller {
  public:
   void setHttpGet(AdsbHttpGetFn fn, void* user);
-  void setActive(bool sportsIsActiveScreen);
+  void setActive(bool weatherIsActiveScreen);
   void onTick(uint32_t elapsedMs);
-  bool takeScores(Scores& out);  // true once per success until consumed
+  bool takeWeather(Weather& out);  // true once per success until consumed
   bool hasLastGood() const;
 
  private:
@@ -30,9 +30,9 @@ class ScoresPoller {
   uint32_t pollMs_{0};
   bool hasLastGood_{false};
   bool hasPending_{false};
-  Scores lastGood_{};
-  /** Response buffer size; heap-allocated per poll (Dial TLS needs free BSS/heap). */
+  Weather lastGood_{};
   static constexpr std::size_t kBodyCap = 8 * 1024;
+  char body_[kBodyCap]{};
 };
 
 }  // namespace desk_display

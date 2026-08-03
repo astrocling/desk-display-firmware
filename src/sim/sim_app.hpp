@@ -9,6 +9,7 @@
 #include "desk_display/screen_sports.hpp"
 #include "desk_display/screen_timezones.hpp"
 #include "desk_display/screen_weather.hpp"
+#include "desk_display/weather_poll.hpp"
 
 #include "../ui/carousel_lvgl.hpp"
 
@@ -45,6 +46,7 @@ class SimApp {
   desk_display::AdsbPoller adsb_poll_;
   desk_display::MapContextPoller map_ctx_poll_;
   desk_display::ScoresPoller scores_poll_;
+  desk_display::WeatherPoller weather_poll_;
 
   lv_obj_t* root_ = nullptr;
   lv_obj_t* carousel_root_ = nullptr;
