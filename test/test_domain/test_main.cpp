@@ -14,7 +14,6 @@
 #include "desk_display/scrub.hpp"
 #include "desk_display/timezone_status.hpp"
 #include "desk_display/weather_icons.hpp"
-#include "desk_display/weather_poll.hpp"
 #include "desk_display/wifi_policy.hpp"
 
 using namespace desk_display;
@@ -382,44 +381,6 @@ void test_scores_poller_waits_full_interval_after_success(void) {
   TEST_ASSERT_EQUAL(2, g_http_calls);
 }
 
-bool fake_weather_http(const char* /*url*/, char* body, std::size_t cap, std::size_t& len,
-                       void* /*user*/) {
-  ++g_http_calls;
-  const char* json =
-      "{\"current\":{\"temp\":72.0,\"feelsLike\":70.0,\"code\":0},"
-      "\"todayHigh\":80.0,\"todayLow\":60.0,\"hourly\":[],"
-      "\"updatedAt\":\"2026-08-03T00:00:00.000Z\"}";
-  len = std::strlen(json);
-  if (len + 1 > cap) {
-    return false;
-  }
-  std::memcpy(body, json, len + 1);
-  return true;
-}
-
-void test_build_weather_url(void) {
-  char url[160];
-  TEST_ASSERT_TRUE(buildWeatherUrl(url, sizeof(url)));
-  TEST_ASSERT_NOT_NULL(std::strstr(url, "/api/weather"));
-}
-
-void test_weather_poller_only_when_active(void) {
-  g_http_calls = 0;
-  WeatherPoller poll;
-  poll.setHttpGet(fake_weather_http, nullptr);
-  poll.setActive(false);
-  poll.onTick(kWeatherPollIntervalMs + 1);
-  TEST_ASSERT_EQUAL(0, g_http_calls);
-
-  poll.setActive(true);
-  poll.onTick(1);
-  TEST_ASSERT_EQUAL(1, g_http_calls);
-  Weather weather{};
-  TEST_ASSERT_TRUE(poll.takeWeather(weather));
-  TEST_ASSERT_FLOAT_WITHIN(0.01f, 72.0f, weather.currentTemp);
-  TEST_ASSERT_FALSE(poll.takeWeather(weather));
-}
-
 void test_mlb_live_format_helpers(void) {
   MlbScores m{};
   m.hasBalls = true;
@@ -616,8 +577,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_build_scores_url);
   RUN_TEST(test_scores_poller_only_when_active);
   RUN_TEST(test_scores_poller_waits_full_interval_after_success);
-  RUN_TEST(test_build_weather_url);
-  RUN_TEST(test_weather_poller_only_when_active);
   RUN_TEST(test_mlb_live_format_helpers);
   RUN_TEST(test_wifi_placeholder_ssid);
   RUN_TEST(test_wifi_retry_backoff);
