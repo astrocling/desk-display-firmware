@@ -16,6 +16,8 @@ constexpr size_t kMaxTransferBytes =
     static_cast<size_t>(kLcdWidth) * kLcdHeight * sizeof(uint16_t);
 constexpr uint32_t kWriteCommandOpcode = 0x02;
 constexpr uint32_t kWriteColorOpcode = 0x32;
+constexpr uint32_t kTransferTimeoutMs = 100;
+constexpr uint32_t kWarningIntervalMs = 1000;
 
 struct InitCommand {
   uint8_t command;
@@ -219,6 +221,8 @@ esp_lcd_panel_io_handle_t s_panelIo = nullptr;
 SemaphoreHandle_t s_transferDone = nullptr;
 bool s_busInitialized = false;
 bool s_panelReady = false;
+uint32_t s_lastTransferTimeoutWarningMs = 0;
+bool s_transferTimeoutWarningLogged = false;
 
 int qspiCommand(uint32_t opcode, uint8_t command) {
   return static_cast<int>((opcode << 24) |
@@ -359,8 +363,16 @@ bool displayFlush(int x0, int y0, int x1, int y1, const uint16_t* pixels) {
         s_panelIo, qspiCommand(kWriteColorOpcode, 0x2C), pixels, pixelBytes);
   }
   if (error == ESP_OK &&
-      xSemaphoreTake(s_transferDone, portMAX_DELAY) != pdTRUE) {
-    error = ESP_FAIL;
+      xSemaphoreTake(s_transferDone, pdMS_TO_TICKS(kTransferTimeoutMs)) !=
+          pdTRUE) {
+    const uint32_t now = millis();
+    if (!s_transferTimeoutWarningLogged ||
+        now - s_lastTransferTimeoutWarningMs >= kWarningIntervalMs) {
+      Serial.println("display: flush transfer timed out");
+      s_lastTransferTimeoutWarningMs = now;
+      s_transferTimeoutWarningLogged = true;
+    }
+    return false;
   }
   return error == ESP_OK;
 }

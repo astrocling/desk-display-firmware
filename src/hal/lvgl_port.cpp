@@ -2,6 +2,7 @@
 
 #include "hal/display.hpp"
 
+#include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
 #include <lvgl.h>
@@ -11,17 +12,28 @@ namespace {
 
 constexpr size_t kDrawBufferPixels =
     static_cast<size_t>(kLcdWidth) * 40;
+constexpr uint32_t kWarningIntervalMs = 1000;
 
 lv_color_t* s_drawBufferMemory = nullptr;
 lv_disp_draw_buf_t s_drawBuffer;
 lv_disp_drv_t s_displayDriver;
 esp_timer_handle_t s_tickTimer = nullptr;
 bool s_initialized = false;
+uint32_t s_lastFlushFailureWarningMs = 0;
+bool s_flushFailureWarningLogged = false;
 
 void flushDisplay(lv_disp_drv_t* driver, const lv_area_t* area,
                   lv_color_t* colors) {
-  displayFlush(area->x1, area->y1, area->x2, area->y2,
-               reinterpret_cast<const uint16_t*>(colors));
+  if (!displayFlush(area->x1, area->y1, area->x2, area->y2,
+                    reinterpret_cast<const uint16_t*>(colors))) {
+    const uint32_t now = millis();
+    if (!s_flushFailureWarningLogged ||
+        now - s_lastFlushFailureWarningMs >= kWarningIntervalMs) {
+      Serial.println("lvgl: display flush failed");
+      s_lastFlushFailureWarningMs = now;
+      s_flushFailureWarningLogged = true;
+    }
+  }
   lv_disp_flush_ready(driver);
 }
 
