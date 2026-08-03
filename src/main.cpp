@@ -1,15 +1,18 @@
 /**
  * Desk Display — Dial firmware entry (Waveshare ESP32-S3 Knob 1.8).
- * Scaffold stub; screen / net / HAL wiring comes in later tracks.
  */
 #include <Arduino.h>
+
+#include "net/wifi.hpp"
 
 void setup() {
   Serial.begin(115200);
   delay(200);
-  Serial.println("desk-display-firmware: dial stub");
+  Serial.println("desk-display-firmware: dial");
+  desk_net::wifiSetup();
 }
 
 void loop() {
-  delay(1000);
+  desk_net::wifiLoop();
+  delay(100);
 }
