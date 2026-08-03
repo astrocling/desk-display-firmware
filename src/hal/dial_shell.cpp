@@ -24,21 +24,44 @@
 #include "../ui/weather_lvgl.hpp"
 
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <lvgl.h>
+#include <new>
 
 namespace desk_hal {
 namespace {
+
+/**
+ * Large radar objects (~55KB ScreenRadar, ~24KB MapContext) must not live in
+ * internal BSS: LVGL needs ~29KB contiguous DMA DRAM for the draw buffer.
+ * Prefer PSRAM; fall back to internal heap only if SPIRAM is unavailable.
+ */
+template <typename T>
+T* allocLarge() {
+  void* mem = heap_caps_malloc(sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (mem == nullptr) {
+    mem = heap_caps_malloc(sizeof(T), MALLOC_CAP_8BIT);
+  }
+  if (mem == nullptr) {
+    return nullptr;
+  }
+  return new (mem) T();
+}
 
 desk_display::Nav g_nav;
 desk_display::ScreenClock g_clock;
 desk_display::ScreenTimezones g_timezones;
 desk_display::WeatherScreen g_weather;
 desk_display::ScreenSports g_sports;
-desk_display::ScreenRadar g_radar;
 desk_display::WeatherPoller g_weather_poll;
 desk_display::ScoresPoller g_scores_poll;
-desk_display::AdsbPoller g_adsb_poll;
-desk_display::MapContextPoller g_map_ctx_poll;
+
+// Heap/PSRAM — not BSS (see allocLarge).
+desk_display::ScreenRadar* g_radar = nullptr;
+desk_display::AdsbPoller* g_adsb_poll = nullptr;
+desk_display::MapContextPoller* g_map_ctx_poll = nullptr;
+desk_display::MapContext* g_map_scratch = nullptr;
+desk_display::AircraftList* g_ac_scratch = nullptr;
 bool g_radar_http_used = false;
 
 bool dialRadarHttpGet(const char* url, char* body, std::size_t bodyCap,
@@ -94,8 +117,8 @@ void refresh_content() {
     return;
   }
 
-  if (g_nav.active_screen() == Screen::Radar &&
-      desk_ui::radar_lvgl_animate_classic(g_body, g_radar.view())) {
+  if (g_radar != nullptr && g_nav.active_screen() == Screen::Radar &&
+      desk_ui::radar_lvgl_animate_classic(g_body, g_radar->view())) {
     return;
   }
 
@@ -121,7 +144,9 @@ void refresh_content() {
       desk_ui::sports_lvgl_build(g_body, g_sports.view());
       break;
     case Screen::Radar:
-      desk_ui::radar_lvgl_build(g_body, g_radar.view());
+      if (g_radar != nullptr) {
+        desk_ui::radar_lvgl_build(g_body, g_radar->view());
+      }
       break;
     default:
       break;
@@ -169,7 +194,9 @@ void settle_focused_screens() {
   g_timezones.onIdleSettle();
   g_weather.onIdleSettle();
   g_sports.onIdleSettle();
-  g_radar.onIdleSettle();
+  if (g_radar != nullptr) {
+    g_radar->onIdleSettle();
+  }
 }
 
 void on_rotate_focused(int8_t delta) {
@@ -184,7 +211,9 @@ void on_rotate_focused(int8_t delta) {
       g_sports.onRotate(delta);
       break;
     case desk_display::Screen::Radar:
-      g_radar.onRotate(delta);
+      if (g_radar != nullptr) {
+        g_radar->onRotate(delta);
+      }
       break;
     default:
       break;
@@ -198,13 +227,25 @@ bool dialShellInit() {
     return false;
   }
 
+  g_radar = allocLarge<desk_display::ScreenRadar>();
+  g_adsb_poll = allocLarge<desk_display::AdsbPoller>();
+  g_map_ctx_poll = allocLarge<desk_display::MapContextPoller>();
+  g_map_scratch = allocLarge<desk_display::MapContext>();
+  g_ac_scratch = allocLarge<desk_display::AircraftList>();
+  if (g_radar == nullptr || g_adsb_poll == nullptr ||
+      g_map_ctx_poll == nullptr || g_map_scratch == nullptr ||
+      g_ac_scratch == nullptr) {
+    Serial.println("shell: radar alloc failed");
+    return false;
+  }
+
   g_weather_poll.setHttpGet(&desk_net::httpGet, nullptr);
   g_scores_poll.setHttpGet(&desk_net::httpGet, nullptr);
-  g_adsb_poll.setHttpGet(&dialRadarHttpGet, nullptr);
-  g_map_ctx_poll.setHttpGet(&dialRadarHttpGet, nullptr);
+  g_adsb_poll->setHttpGet(&dialRadarHttpGet, nullptr);
+  g_map_ctx_poll->setHttpGet(&dialRadarHttpGet, nullptr);
 
 #if defined(RADAR_POI_COUNT)
-  g_radar.setPois(RADAR_POIS, static_cast<std::size_t>(RADAR_POI_COUNT));
+  g_radar->setPois(RADAR_POIS, static_cast<std::size_t>(RADAR_POI_COUNT));
 #endif
 
   g_root = lv_obj_create(lv_scr_act());
@@ -264,6 +305,11 @@ void dialShellOnCenterTap() { g_nav.on_center_tap(); }
 void dialShellOnTick(uint32_t elapsed_ms) {
   using desk_display::Screen;
 
+  if (g_radar == nullptr || g_adsb_poll == nullptr ||
+      g_map_ctx_poll == nullptr) {
+    return;
+  }
+
   g_clock_accum_ms += elapsed_ms;
   if (g_clock_accum_ms >= 1000) {
     g_clock_accum_ms = 0;
@@ -316,33 +362,32 @@ void dialShellOnTick(uint32_t elapsed_ms) {
 
   const bool radar_active = g_nav.active_screen() == Screen::Radar;
   g_radar_http_used = false;
-  g_adsb_poll.setActive(radar_active);
-  g_map_ctx_poll.setActive(radar_active);
+  g_adsb_poll->setActive(radar_active);
+  g_map_ctx_poll->setActive(radar_active);
 
   if (radar_active) {
-    g_radar.onTick(elapsed_ms);
-    g_adsb_poll.setCenter(g_radar.centerLat(), g_radar.centerLon(),
-                          g_radar.rangeMiles());
-    g_map_ctx_poll.setCenter(g_radar.centerLat(), g_radar.centerLon(),
-                             g_radar.rangeMiles());
+    g_radar->onTick(elapsed_ms);
+    g_adsb_poll->setCenter(g_radar->centerLat(), g_radar->centerLon(),
+                           g_radar->rangeMiles());
+    g_map_ctx_poll->setCenter(g_radar->centerLat(), g_radar->centerLon(),
+                              g_radar->rangeMiles());
   }
 
   // Map first so when both are due, ADS-B defers via dialRadarHttpGet.
-  g_map_ctx_poll.onTick(elapsed_ms);
-  g_adsb_poll.onTick(elapsed_ms);
+  g_map_ctx_poll->onTick(elapsed_ms);
+  g_adsb_poll->onTick(elapsed_ms);
 
   bool radar_dirty = radar_active;
 
-  desk_display::MapContext fresh_map{};
-  if (g_map_ctx_poll.takeContext(fresh_map)) {
-    g_radar.bindMapContext(fresh_map);
+  // Scratch lives in PSRAM — MapContext (~24KB) must not sit on the 24KB loop stack.
+  if (g_map_ctx_poll->takeContext(*g_map_scratch)) {
+    g_radar->bindMapContext(*g_map_scratch);
     Serial.println("map: bound");
     radar_dirty = true;
   }
 
-  desk_display::AircraftList fresh_ac{};
-  if (g_adsb_poll.takeAircraft(fresh_ac)) {
-    g_radar.bind(fresh_ac);
+  if (g_adsb_poll->takeAircraft(*g_ac_scratch)) {
+    g_radar->bind(*g_ac_scratch);
     Serial.println("adsb: bound");
     radar_dirty = true;
   }

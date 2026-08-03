@@ -53,10 +53,17 @@ bool lvglPortInit() {
 
   lv_init();
 
+  const size_t drawBytes = kDrawBufferPixels * sizeof(lv_color_t);
   s_drawBufferMemory = static_cast<lv_color_t*>(heap_caps_malloc(
-      kDrawBufferPixels * sizeof(lv_color_t),
-      MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+      drawBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
   if (s_drawBufferMemory == nullptr) {
+    Serial.printf(
+        "lvgl: draw buf alloc failed (%u B); free internal=%u largest=%u\n",
+        static_cast<unsigned>(drawBytes),
+        static_cast<unsigned>(
+            heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+        static_cast<unsigned>(
+            heap_caps_get_largest_free_block(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)));
     return false;
   }
 
