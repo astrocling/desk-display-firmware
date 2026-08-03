@@ -2,16 +2,24 @@
 
 #include "desk_display/nav.hpp"
 #include "desk_display/nav_status.hpp"
+#include "desk_display/scores_poll.hpp"
 #include "desk_display/screen_clock.hpp"
+#include "desk_display/screen_radar.hpp"
+#include "desk_display/screen_sports.hpp"
 #include "desk_display/screen_timezones.hpp"
+#include "desk_display/screen_weather.hpp"
 #include "desk_display/theme.hpp"
+#include "desk_display/weather_poll.hpp"
 
 #include "hal/display.hpp"
+#include "net/http.hpp"
 #include "net/ntp.hpp"
 #include "../ui/carousel_lvgl.hpp"
 #include "../ui/clock_lvgl.hpp"
-#include "../ui/screen_stub_lvgl.hpp"
+#include "../ui/radar_lvgl.hpp"
+#include "../ui/sports_lvgl.hpp"
 #include "../ui/timezones_lvgl.hpp"
+#include "../ui/weather_lvgl.hpp"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -22,6 +30,11 @@ namespace {
 desk_display::Nav g_nav;
 desk_display::ScreenClock g_clock;
 desk_display::ScreenTimezones g_timezones;
+desk_display::WeatherScreen g_weather;
+desk_display::ScreenSports g_sports;
+desk_display::ScreenRadar g_radar;
+desk_display::WeatherPoller g_weather_poll;
+desk_display::ScoresPoller g_scores_poll;
 
 lv_obj_t* g_root = nullptr;
 lv_obj_t* g_carousel_root = nullptr;
@@ -67,7 +80,13 @@ void refresh_content() {
     return;
   }
 
+  if (g_nav.active_screen() == Screen::Radar &&
+      desk_ui::radar_lvgl_animate_classic(g_body, g_radar.view())) {
+    return;
+  }
+
   lv_obj_clean(g_body);
+  desk_ui::radar_lvgl_invalidate();
 
   const bool carousel_mode = g_nav.mode() == desk_display::NavMode::Carousel;
   const lv_coord_t host_h =
@@ -82,13 +101,13 @@ void refresh_content() {
       desk_ui::timezones_lvgl_build(g_body, g_timezones.view(), host_h);
       break;
     case Screen::Weather:
-      desk_ui::screen_stub_lvgl_build(g_body, "Weather");
+      desk_ui::weather_lvgl_build(g_body, g_weather.view());
       break;
     case Screen::Sports:
-      desk_ui::screen_stub_lvgl_build(g_body, "Sports");
+      desk_ui::sports_lvgl_build(g_body, g_sports.view());
       break;
     case Screen::Radar:
-      desk_ui::screen_stub_lvgl_build(g_body, "Radar");
+      desk_ui::radar_lvgl_build(g_body, g_radar.view());
       break;
     default:
       break;
@@ -110,6 +129,7 @@ void rebuild_ui_for_active() {
   if (g_body != nullptr) {
     lv_obj_del(g_body);
     g_body = nullptr;
+    desk_ui::radar_lvgl_invalidate();
   }
 
   lv_obj_t* const body_parent =
@@ -133,11 +153,27 @@ void rebuild_ui_for_active() {
 
 void settle_focused_screens() {
   g_timezones.onIdleSettle();
+  g_weather.onIdleSettle();
+  g_sports.onIdleSettle();
+  g_radar.onIdleSettle();
 }
 
 void on_rotate_focused(int8_t delta) {
-  if (g_nav.focused() == desk_display::Screen::Timezones) {
-    g_timezones.onRotate(delta);
+  switch (g_nav.focused()) {
+    case desk_display::Screen::Timezones:
+      g_timezones.onRotate(delta);
+      break;
+    case desk_display::Screen::Weather:
+      g_weather.onRotate(delta);
+      break;
+    case desk_display::Screen::Sports:
+      g_sports.onRotate(delta);
+      break;
+    case desk_display::Screen::Radar:
+      g_radar.onRotate(delta);
+      break;
+    default:
+      break;
   }
 }
 
@@ -147,6 +183,9 @@ bool dialShellInit() {
   if (lv_disp_get_default() == nullptr) {
     return false;
   }
+
+  g_weather_poll.setHttpGet(&desk_net::httpGet, nullptr);
+  g_scores_poll.setHttpGet(&desk_net::httpGet, nullptr);
 
   g_root = lv_obj_create(lv_scr_act());
   lv_obj_set_size(g_root, kLcdWidth, kLcdHeight);
@@ -191,7 +230,10 @@ void dialShellOnRotate(int8_t delta) {
   } else {
     on_rotate_focused(delta);
     g_nav.idle_reset();
-    if (g_nav.focused() == desk_display::Screen::Timezones) {
+    if (g_nav.focused() == desk_display::Screen::Timezones ||
+        g_nav.focused() == desk_display::Screen::Weather ||
+        g_nav.focused() == desk_display::Screen::Sports ||
+        g_nav.focused() == desk_display::Screen::Radar) {
       refresh_content();
     }
   }
@@ -215,6 +257,8 @@ void dialShellOnTick(uint32_t elapsed_ms) {
     }
   }
 
+  // Rebuild UI before any blocking HTTP so carousel stays responsive and TLS
+  // does not run on a half-torn-down body.
   const auto idle = g_nav.on_tick(elapsed_ms);
   if (idle == desk_display::IdleEvent::SettleFocused) {
     settle_focused_screens();
@@ -223,6 +267,36 @@ void dialShellOnTick(uint32_t elapsed_ms) {
   if (g_nav.active_screen() != g_last_screen || g_nav.mode() != g_last_mode) {
     rebuild_ui_for_active();
   } else if (idle == desk_display::IdleEvent::SettleFocused) {
+    refresh_content();
+  }
+
+  const bool weather_active = g_nav.active_screen() == Screen::Weather;
+  g_weather_poll.setActive(weather_active);
+  g_weather_poll.onTick(elapsed_ms);
+
+  desk_display::Weather fresh_weather{};
+  const bool got_weather = g_weather_poll.takeWeather(fresh_weather);
+  if (got_weather) {
+    g_weather.bind(fresh_weather);
+    Serial.println("weather: bound");
+    refresh_content();
+  }
+
+  const bool sports_active = g_nav.active_screen() == Screen::Sports;
+  g_scores_poll.setActive(sports_active);
+  g_scores_poll.onTick(elapsed_ms);
+
+  desk_display::Scores fresh_scores{};
+  const bool got_scores = g_scores_poll.takeScores(fresh_scores);
+  if (got_scores) {
+    g_sports.bind(fresh_scores);
+    Serial.println("scores: bound");
+    refresh_content();
+  }
+
+  const bool radar_active = g_nav.active_screen() == Screen::Radar;
+  if (radar_active) {
+    g_radar.onTick(elapsed_ms);
     refresh_content();
   }
 }
