@@ -1,5 +1,6 @@
 #include "hal/encoder.hpp"
 #include "hal/board_pins.hpp"
+#include "hal/bidi_switch_knob.h"
 
 #include "desk_display/encoder_decode.hpp"
 
@@ -12,30 +13,41 @@ namespace {
 constexpr bool kEncoderInvert = false;
 
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
-desk_display::EncoderDecoder s_decoder;
 volatile int32_t s_accum = 0;
+knob_handle_t s_knob = nullptr;
 
-void IRAM_ATTR onEncoderEdge() {
-  const bool a = digitalRead(pins::kEncoderA);
-  const bool b = digitalRead(pins::kEncoderB);
-  const int8_t d = s_decoder.update(a, b);
-  if (d != 0) {
-    portENTER_CRITICAL_ISR(&s_mux);
-    s_accum += d;
-    portEXIT_CRITICAL_ISR(&s_mux);
-  }
+void onKnobRight(void*, void*) {
+  portENTER_CRITICAL(&s_mux);
+  s_accum += 1;
+  portEXIT_CRITICAL(&s_mux);
+}
+
+void onKnobLeft(void*, void*) {
+  portENTER_CRITICAL(&s_mux);
+  s_accum -= 1;
+  portEXIT_CRITICAL(&s_mux);
 }
 
 }  // namespace
 
 bool encoderInit() {
-  pinMode(pins::kEncoderA, INPUT_PULLUP);
-  pinMode(pins::kEncoderB, INPUT_PULLUP);
-  s_decoder.reset();
   s_accum = 0;
-  s_decoder.update(digitalRead(pins::kEncoderA), digitalRead(pins::kEncoderB));
-  attachInterrupt(digitalPinToInterrupt(pins::kEncoderA), onEncoderEdge, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(pins::kEncoderB), onEncoderEdge, CHANGE);
+
+  // Official Waveshare Knob 1.8 driver (bidi pulse, 3 ms timer poll).
+  const knob_config_t cfg = {
+      .gpio_encoder_a = static_cast<uint8_t>(pins::kEncoderA),
+      .gpio_encoder_b = static_cast<uint8_t>(pins::kEncoderB),
+  };
+  s_knob = iot_knob_create(&cfg);
+  if (s_knob == nullptr) {
+    Serial.println("encoder: iot_knob create failed");
+    return false;
+  }
+  if (iot_knob_register_cb(s_knob, KNOB_RIGHT, onKnobRight, nullptr) != ESP_OK ||
+      iot_knob_register_cb(s_knob, KNOB_LEFT, onKnobLeft, nullptr) != ESP_OK) {
+    Serial.println("encoder: iot_knob cb register failed");
+    return false;
+  }
   Serial.println("encoder: ready");
   return true;
 }
