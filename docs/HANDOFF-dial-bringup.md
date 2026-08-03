@@ -17,6 +17,7 @@
 - **Carousel reboot fix:** blocking HTTPS was overflowing the default 8KB Arduino loop stack when landing on Weather. Dial now uses `-DARDUINO_LOOP_STACK_SIZE=24576`, heap-allocated `WiFiClientSecure`, and rebuilds UI before poll (`src/net/http.cpp`, `platformio.ini`, `dial_shell.cpp`). **Retested:** carousel both directions without reboot; Weather bind OK.
 - **Scores TLS OOM:** a 64KB BSS body in `ScoresPoller` left too little heap for mbedTLS (`SSL - Memory allocation failed`). Body is now 8KB, heap-allocated per poll (`scores_poll.*`).
 - **Radar pollers:** ADS-B + map-context bodies are **64KB** heap-allocated per poll (`adsb_poll.*`, `map_context_poll.*`). Scores uses an **8KB** body (TLS OOM fix above).
+- **Radar DRAM:** `ScreenRadar` / map-context poller / bind scratch live in PSRAM (`allocLarge` in `dial_shell`), not internal BSS — otherwise LVGL’s ~29KB DMA draw buffer fails and the Dial reboot-loops (~84% RAM before the move).
 - Theme `kBg` (green bring-up gone)
 
 ## Input model (locked)
