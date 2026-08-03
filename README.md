@@ -6,7 +6,7 @@ ESP32-S3 firmware for the **Waveshare ESP32-S3-Knob-Touch-LCD-1.8** ("Dial") des
 
 ## Current status
 
-**Tracks 0–C and the desktop simulator are done** (scaffold, API parsers, nav shell, screen view-models, SDL + LVGL sim). The Dial now has **Wi-Fi STA connect + NVS credentials** — display/touch/encoder HAL and on-device UI wire-up are still to come.
+**Tracks 0–C and the desktop simulator are done** (scaffold, API parsers, nav shell, screen view-models, SDL + LVGL sim). The Dial now has **Wi-Fi STA connect + NVS credentials** and **display HAL solid-color bring-up** — touch, encoder, and on-device nav/UI wire-up are still to come.
 
 ### Unit tests
 
@@ -59,7 +59,8 @@ Boots on **Focused Clock** with fixtures from `fixtures/`. Shared logic lives in
    ```
 
 4. **Success:** Serial shows `wifi: credentials from NVS` or `wifi: seeded from config.h`, then `wifi: connected ssid=… ip=…`.
-5. **Changing network later:** edit `config.h`, uncomment `-DWIFI_FORCE_CONFIG` under `[env:dial]` in `platformio.ini` for one upload, then comment it out again.
+5. **Display verify:** after upload, the panel should show a solid dark green (`0x1B5E20`) and Serial should print `display: ready`.
+6. **Changing network later:** edit `config.h`, uncomment `-DWIFI_FORCE_CONFIG` under `[env:dial]` in `platformio.ini` for one upload, then comment it out again.
 
 ## Project layout
 
