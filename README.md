@@ -6,7 +6,7 @@ ESP32-S3 firmware for the **Waveshare ESP32-S3-Knob-Touch-LCD-1.8** ("Dial") des
 
 ## Current status
 
-**Tracks 0–C and the desktop simulator are done** (scaffold, API parsers, nav shell, screen view-models, SDL + LVGL sim). The Dial now has **Wi-Fi STA connect + NVS credentials**, **display HAL solid-color bring-up**, **encoder + CST816 center-tap driving on-device `Nav`**, with Serial + overlay status — full screens still to come.
+**Tracks 0–C and the desktop simulator are done** (scaffold, API parsers, nav shell, screen view-models, SDL + LVGL sim). The Dial now has **Wi-Fi STA + NVS**, **display HAL**, **encoder + CST816 center-tap**, **on-device Nav**, **carousel chrome**, **Clock + Timezones** (SNTP), and **stubs** for Weather/Sports/Radar — remaining screens still to port from sim.
 
 ### Unit tests
 
@@ -59,9 +59,9 @@ Boots on **Focused Clock** with fixtures from `fixtures/`. Shared logic lives in
    ```
 
 4. **Success:** Serial shows `wifi: credentials from NVS` or `wifi: seeded from config.h`, then `wifi: connected ssid=… ip=…`.
-5. **Display verify:** after upload, the panel should show a solid dark green (`0x1B5E20`) and Serial should print `display: ready`.
+5. **Display verify:** after upload, Serial `display: ready`; panel uses theme background (`kBg`), not the old solid green bring-up fill.
 6. **Changing network later:** edit `config.h`, uncomment `-DWIFI_FORCE_CONFIG` under `[env:dial]` in `platformio.ini` for one upload, then comment it out again.
-7. **Input/nav verify:** Serial `encoder: ready`, `touch: ready` (or not found), boot `nav: Focused Clock`; short tap → Carousel; rotate cycles highlight names; tap enters Focused; idle ~60s from Carousel returns to Focused Clock. Overlay text matches Serial.
+7. **Shell / Clock verify:** Serial `encoder: ready`, `touch: ready` (or not found), `ntp: syncing` → `ntp: synced`, boot `nav: Focused Clock` with live clock face; short tap → Carousel (title/dots/preview); rotate cycles screens (stubs for Weather/Sports/Radar); Focused Timezones rotate scrubs hours; idle ~60s from Carousel returns to Focused Clock.
 
 ## Project layout
 

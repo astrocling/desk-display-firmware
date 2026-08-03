@@ -6,7 +6,6 @@
 #include "desk_display/airport.hpp"
 #include "desk_display/radar_prefs.hpp"
 #include "desk_display/radar_settings.hpp"
-#include "desk_display/format_time.hpp"
 #include "desk_display/map_context.hpp"
 #include "desk_display/scores.hpp"
 #include "desk_display/theme.hpp"
@@ -17,7 +16,9 @@
 #include "sim_http.hpp"
 #include "weather_img.hpp"
 
+#include "../ui/clock_lvgl.hpp"
 #include "../ui/radar_lvgl.hpp"
+#include "../ui/timezones_lvgl.hpp"
 
 #if __has_include("config.h")
 #include "config.h"
@@ -37,48 +38,6 @@ constexpr const char* kRadarPrefsPath = "radar_prefs.bin";
 
 lv_color_t rgb(uint32_t c) {
   return lv_color_make((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
-}
-
-lv_obj_t* make_status_icon(lv_obj_t* parent, desk_display::TzRowStatus st) {
-  constexpr lv_coord_t kSize = 12;
-
-  if (st == desk_display::TzRowStatus::Night) {
-    // Crescent: moon disc with a background-colored cutout.
-    lv_obj_t* wrap = lv_obj_create(parent);
-    lv_obj_set_size(wrap, kSize, kSize);
-    lv_obj_set_style_bg_opa(wrap, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(wrap, 0, 0);
-    lv_obj_set_style_pad_all(wrap, 0, 0);
-    lv_obj_clear_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* moon = lv_obj_create(wrap);
-    lv_obj_set_size(moon, kSize, kSize);
-    lv_obj_set_style_radius(moon, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(moon, rgb(desk_display::theme::kStatusNight), 0);
-    lv_obj_set_style_border_width(moon, 0, 0);
-    lv_obj_set_style_pad_all(moon, 0, 0);
-    lv_obj_align(moon, LV_ALIGN_CENTER, 0, 0);
-
-    lv_obj_t* cut = lv_obj_create(wrap);
-    lv_obj_set_size(cut, kSize - 2, kSize - 2);
-    lv_obj_set_style_radius(cut, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(cut, rgb(desk_display::theme::kBg), 0);
-    lv_obj_set_style_border_width(cut, 0, 0);
-    lv_obj_set_style_pad_all(cut, 0, 0);
-    lv_obj_align(cut, LV_ALIGN_CENTER, 3, -1);
-    return wrap;
-  }
-
-  lv_obj_t* dot = lv_obj_create(parent);
-  lv_obj_set_size(dot, kSize, kSize);
-  lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_border_width(dot, 0, 0);
-  lv_obj_set_style_pad_all(dot, 0, 0);
-  const uint32_t color = (st == desk_display::TzRowStatus::Working)
-                             ? desk_display::theme::kStatusWorking
-                             : desk_display::theme::kStatusAwake;
-  lv_obj_set_style_bg_color(dot, rgb(color), 0);
-  return dot;
 }
 
 }  // namespace
@@ -248,84 +207,13 @@ void SimApp::refresh_content() {
   // Carousel and Focused share the same default screen views. Mode only
   // changes input: Carousel rotate cycles screens; Focused rotate is in-app.
   switch (scr) {
-    case Screen::Clock: {
-      const auto v = clock_.view();
-      lv_obj_t* date = lv_label_create(body_);
-      lv_label_set_text(date, v.dateText);
-      lv_obj_set_style_text_color(date, rgb(desk_display::theme::kDim), 0);
-      lv_obj_align(date, LV_ALIGN_CENTER, 0, 40);
-
-      char timebuf[20];
-      desk_display::format12HourWithSeconds(timebuf, sizeof(timebuf), v.hour, v.minute,
-                                            v.second);
-      lv_obj_t* time = lv_label_create(body_);
-      lv_label_set_text(time, timebuf);
-      lv_obj_set_style_text_font(time, &lv_font_montserrat_28, 0);
-      lv_obj_set_style_text_color(time, rgb(0xFFFFFF), 0);
-      lv_obj_align(time, LV_ALIGN_CENTER, 0, -10);
-
-      // Analog ticks via arcs as stand-in for hands
-      lv_obj_t* face = lv_arc_create(body_);
-      lv_obj_set_size(face, 200, 200);
-      lv_obj_center(face);
-      lv_arc_set_bg_angles(face, 0, 360);
-      lv_arc_set_value(face, 0);
-      lv_obj_remove_style(face, nullptr, LV_PART_KNOB);
-      lv_obj_clear_flag(face, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_set_style_arc_color(face, rgb(desk_display::theme::kDim), LV_PART_MAIN);
-      lv_obj_set_style_arc_width(face, 2, LV_PART_MAIN);
-      lv_obj_set_style_arc_opa(face, LV_OPA_40, LV_PART_INDICATOR);
-
-      if (v.timezoneBoardHint) {
-        lv_obj_t* hint = lv_label_create(body_);
-        lv_label_set_text(hint, "→ Timezones");
-        lv_obj_set_style_text_color(hint, rgb(desk_display::theme::kAccent), 0);
-        lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -4);
-      }
+    case Screen::Clock:
+      desk_ui::clock_lvgl_build(body_, clock_.view());
       break;
-    }
-    case Screen::Timezones: {
-      const auto v = timezones_.view();
-      constexpr lv_coord_t kRowPitch = 28;
-      constexpr lv_coord_t kRowCount =
-          static_cast<lv_coord_t>(desk_display::kTimezoneBoardRows);
-      // Approximate body_ height; center the block in that area
-      constexpr lv_coord_t kBodyH = static_cast<lv_coord_t>(kDispH - 48);
-      const lv_coord_t startY = (kBodyH - kRowCount * kRowPitch) / 2;
-      for (std::size_t i = 0; i < desk_display::kTimezoneBoardRows; ++i) {
-        const auto& row = v.rows[i];
-
-        lv_obj_t* row_obj = lv_obj_create(body_);
-        lv_obj_set_size(row_obj, LV_SIZE_CONTENT, kRowPitch);
-        lv_obj_set_style_bg_opa(row_obj, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(row_obj, 0, 0);
-        lv_obj_set_style_pad_all(row_obj, 0, 0);
-        lv_obj_set_style_pad_column(row_obj, 8, 0);
-        lv_obj_clear_flag(row_obj, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_flex_flow(row_obj, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(row_obj, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                              LV_FLEX_ALIGN_CENTER);
-        lv_obj_align(row_obj, LV_ALIGN_TOP_MID, 0,
-                     static_cast<lv_coord_t>(startY + static_cast<lv_coord_t>(i) * kRowPitch));
-
-        make_status_icon(row_obj, row.status);
-
-        char line[80];
-        std::snprintf(line, sizeof(line), "%s  %s%s", row.timeText, row.label,
-                      row.isAnchor ? " *" : "");
-        lv_obj_t* lab = lv_label_create(row_obj);
-        lv_label_set_text(lab, line);
-        lv_obj_set_style_text_font(lab, &lv_font_montserrat_12, 0);
-        uint32_t textColor = desk_display::theme::kDim;
-        if (row.status == desk_display::TzRowStatus::Night) {
-          textColor = 0x4B5563;  // dimmer for night rows
-        } else if (row.isAnchor) {
-          textColor = desk_display::theme::kAccent;
-        }
-        lv_obj_set_style_text_color(lab, rgb(textColor), 0);
-      }
+    case Screen::Timezones:
+      desk_ui::timezones_lvgl_build(body_, timezones_.view(),
+                                    static_cast<lv_coord_t>(kDispH - 48));
       break;
-    }
     case Screen::Weather: {
       const auto v = weather_.view();
       if (!v.ready) {

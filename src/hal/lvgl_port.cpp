@@ -2,6 +2,8 @@
 
 #include "hal/display.hpp"
 
+#include "desk_display/theme.hpp"
+
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
@@ -83,7 +85,8 @@ bool lvglPortInit() {
     return false;
   }
 
-  lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x1B5E20), 0);
+  lv_obj_set_style_bg_color(lv_scr_act(),
+                            lv_color_hex(desk_display::theme::kBg), 0);
   lv_obj_set_style_bg_opa(lv_scr_act(), LV_OPA_COVER, 0);
   lv_obj_invalidate(lv_scr_act());
 
