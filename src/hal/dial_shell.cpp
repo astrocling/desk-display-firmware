@@ -1,5 +1,7 @@
 #include "hal/dial_shell.hpp"
 
+#include "desk_display/adsb_poll.hpp"
+#include "desk_display/map_context_poll.hpp"
 #include "desk_display/nav.hpp"
 #include "desk_display/nav_status.hpp"
 #include "desk_display/scores_poll.hpp"
@@ -35,6 +37,18 @@ desk_display::ScreenSports g_sports;
 desk_display::ScreenRadar g_radar;
 desk_display::WeatherPoller g_weather_poll;
 desk_display::ScoresPoller g_scores_poll;
+desk_display::AdsbPoller g_adsb_poll;
+desk_display::MapContextPoller g_map_ctx_poll;
+bool g_radar_http_used = false;
+
+bool dialRadarHttpGet(const char* url, char* body, std::size_t bodyCap,
+                      std::size_t& bodyLen, void* user) {
+  if (g_radar_http_used) {
+    return false;  // Defer — poller retries next tick.
+  }
+  g_radar_http_used = true;
+  return desk_net::httpGet(url, body, bodyCap, bodyLen, user);
+}
 
 lv_obj_t* g_root = nullptr;
 lv_obj_t* g_carousel_root = nullptr;
@@ -186,6 +200,12 @@ bool dialShellInit() {
 
   g_weather_poll.setHttpGet(&desk_net::httpGet, nullptr);
   g_scores_poll.setHttpGet(&desk_net::httpGet, nullptr);
+  g_adsb_poll.setHttpGet(&dialRadarHttpGet, nullptr);
+  g_map_ctx_poll.setHttpGet(&dialRadarHttpGet, nullptr);
+
+#if defined(RADAR_POI_COUNT)
+  g_radar.setPois(RADAR_POIS, static_cast<std::size_t>(RADAR_POI_COUNT));
+#endif
 
   g_root = lv_obj_create(lv_scr_act());
   lv_obj_set_size(g_root, kLcdWidth, kLcdHeight);
@@ -295,8 +315,39 @@ void dialShellOnTick(uint32_t elapsed_ms) {
   }
 
   const bool radar_active = g_nav.active_screen() == Screen::Radar;
+  g_radar_http_used = false;
+  g_adsb_poll.setActive(radar_active);
+  g_map_ctx_poll.setActive(radar_active);
+
   if (radar_active) {
     g_radar.onTick(elapsed_ms);
+    g_adsb_poll.setCenter(g_radar.centerLat(), g_radar.centerLon(),
+                          g_radar.rangeMiles());
+    g_map_ctx_poll.setCenter(g_radar.centerLat(), g_radar.centerLon(),
+                             g_radar.rangeMiles());
+  }
+
+  // Map first so when both are due, ADS-B defers via dialRadarHttpGet.
+  g_map_ctx_poll.onTick(elapsed_ms);
+  g_adsb_poll.onTick(elapsed_ms);
+
+  bool radar_dirty = radar_active;
+
+  desk_display::MapContext fresh_map{};
+  if (g_map_ctx_poll.takeContext(fresh_map)) {
+    g_radar.bindMapContext(fresh_map);
+    Serial.println("map: bound");
+    radar_dirty = true;
+  }
+
+  desk_display::AircraftList fresh_ac{};
+  if (g_adsb_poll.takeAircraft(fresh_ac)) {
+    g_radar.bind(fresh_ac);
+    Serial.println("adsb: bound");
+    radar_dirty = true;
+  }
+
+  if (radar_dirty) {
     refresh_content();
   }
 }
