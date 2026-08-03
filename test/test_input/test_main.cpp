@@ -1,7 +1,5 @@
 #include <unity.h>
 
-#include <cstring>
-
 #include "desk_display/center_tap.hpp"
 #include "desk_display/encoder_decode.hpp"
 #include "desk_display/nav.hpp"
@@ -21,15 +19,15 @@ using desk_display::screenTitleUpper;
 
 void test_encoder_forward_quarter_turns(void) {
   EncoderDecoder d;
-  // Idle 00; CW gray: 00 → 01 → 11 → 10 → 00 = +1 per full cycle of 4 edges
-  // Implementer: document which AB bit order is (A<<1)|B; tests assume A=bit1, B=bit0.
+  // Idle 00; CW gray: 00 → 01 → 11 → 10 → 00 = +1 per full cycle of 4 edges.
+  // AB state is encoded as (A << 1) | B.
   int8_t sum = 0;
   sum += d.update(false, false);
   sum += d.update(false, true);   // 00 → 01
   sum += d.update(true, true);    // 01 → 11
   sum += d.update(true, false);   // 11 → 10
   sum += d.update(false, false);  // 10 → 00
-  TEST_ASSERT_EQUAL_INT8(1, sum);  // one detent / full cycle → +1 (or +4 if counting edges — MUST be +1 detent; see Step 3)
+  TEST_ASSERT_EQUAL_INT8(1, sum);
 }
 
 void test_encoder_backward(void) {

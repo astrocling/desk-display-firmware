@@ -1,8 +1,8 @@
-# Handoff — Dial bring-up (Wi‑Fi + display)
+# Handoff — Dial bring-up (Wi‑Fi + display + input/Nav)
 
 **Date:** 2026-08-03  
 **Repo:** `/Users/bruceclingan/Projects/desktop-display-firmware`  
-**Branch:** `main` (local only — **do not push until user asks**; currently ~12 commits ahead of `origin/main`)
+**Branch:** `feat/dial-input-nav` (feature branch for input + Nav bring-up; do not push until user asks)
 
 ## Device
 
@@ -14,6 +14,7 @@
 
 1. **Wi‑Fi A+** — `config.h` (gitignored) seeds NVS namespace `wifi`; NVS wins after first boot; optional `-DWIFI_FORCE_CONFIG`. Spec/plan: `docs/superpowers/specs/2026-08-03-wifi-nvs-boot-design.md`, `docs/superpowers/plans/2026-08-03-wifi-nvs-boot.md`. Code: `src/net/wifi.*`, `lib/desk_display` `wifi_policy.*`.
 2. **Display HAL solid color** — Spec/plan: `docs/superpowers/specs/2026-08-03-dial-display-hal-design.md`, `docs/superpowers/plans/2026-08-03-dial-display-hal.md`. Code: `src/hal/board_pins.hpp`, `display.*`, `lvgl_port.*`; `main` wires Wi‑Fi then LVGL.
+3. **Input + Nav** — Encoder (GPIO 8/7) + CST816 center-tap drive on-device `Nav` (carousel/focused); Serial `encoder: ready`, `touch: ready` (or not found), boot `nav: Focused Clock`; LVGL overlay matches Serial. Code: `src/hal/encoder.*`, `touch.*`, `lib/desk_display/nav.*`, `nav_status.*`.
 
 ## Input model (already decided — do not rethink)
 
@@ -38,7 +39,7 @@
   cd /Users/bruceclingan/Projects/desktop-display-firmware
   pio run -e dial -t upload --upload-port /dev/cu.usbmodem*
   ```
-- Verify Serial: `wifi: …` then `display: ready`; screen dark green.
+- Verify Serial: `wifi: …`, `display: ready`, `encoder: ready`, `touch: ready` (or not found), boot `nav: Focused Clock`; screen dark green.
 - Native tests: `pio test -e native` (or `-f test_domain`) via either penv.
 
 ## Pin map (Knob 1.8 — locked)

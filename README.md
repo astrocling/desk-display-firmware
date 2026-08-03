@@ -11,7 +11,7 @@ ESP32-S3 firmware for the **Waveshare ESP32-S3-Knob-Touch-LCD-1.8** ("Dial") des
 ### Unit tests
 
 ```bash
-pio test -e native   # 85 cases — parsers, domain, nav, all screen models
+pio test -e native   # 131 cases — parsers, domain, nav, all screen models
 ```
 
 ### Desktop simulator

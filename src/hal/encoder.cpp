@@ -8,6 +8,7 @@
 namespace desk_hal {
 namespace {
 
+// Set true if rotation direction is inverted on hardware.
 constexpr bool kEncoderInvert = false;
 
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
