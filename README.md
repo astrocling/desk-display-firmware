@@ -6,7 +6,7 @@ ESP32-S3 firmware for the **Waveshare ESP32-S3-Knob-Touch-LCD-1.8** ("Dial") des
 
 ## Current status
 
-No Dial hardware yet. **Tracks 0–C are done** on the host (scaffold, API parsers, nav shell, screen view-models). An **SDL + LVGL desktop simulator** is available. Tracks D–E (display/touch/encoder HAL + on-device wire-up) wait for the Dial.
+**Tracks 0–C and the desktop simulator are done** (scaffold, API parsers, nav shell, screen view-models, SDL + LVGL sim). The Dial now has **Wi-Fi STA connect + NVS credentials** — display/touch/encoder HAL and on-device UI wire-up are still to come.
 
 ### Unit tests
 
@@ -38,24 +38,28 @@ Boots on **Focused Clock** with fixtures from `fixtures/`. Shared logic lives in
 ## Setup
 
 1. Install [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation.html) (`pio`).
-2. Copy the example config and fill in Wi-Fi credentials:
+2. Copy the example config and set Wi-Fi credentials (2.4 GHz only on the Dial):
 
    ```bash
    cp include/config.h.example include/config.h
    ```
 
-   Edit `include/config.h` — set `WIFI_SSID` and `WIFI_PASS`. `config.h` is git-ignored and must not be committed.
+   Edit `include/config.h` — set `WIFI_SSID` and `WIFI_PASS`.
+3. `config.h` is gitignored — do not commit it.
 
-## Flashing notes (when hardware arrives)
+## Flashing notes
 
-1. **Flash the stock Waveshare demo first** to confirm the unit, display, touch, and knob work before any custom firmware.
-2. **USB-C orientation matters.** The Dial has a USB hub behind the Type-C port; orientation selects either the native ESP32-S3 USB or the secondary ESP32 UART path. If upload fails with something like "This chip is ESP32, not ESP32-S3", flip the cable and retry.
-3. Prefer the native S3 USB port (`usbmodem*` on macOS) over the UART serial device when uploading with PlatformIO.
+1. **Flash the stock Waveshare demo first** to validate the unit, display, touch, and knob before custom firmware.
+2. **USB-C orientation matters.** Flip the cable if upload reports "This chip is ESP32, not ESP32-S3". Prefer the native S3 USB port (`usbmodem*` on macOS).
+3. Build and upload, then open Serial:
 
-```bash
-pio run -e dial -t upload
-pio device monitor -e dial
-```
+   ```bash
+   pio run -e dial -t upload
+   pio device monitor -e dial
+   ```
+
+4. **Success:** Serial shows `wifi: credentials from NVS` or `wifi: seeded from config.h`, then `wifi: connected ssid=… ip=…`.
+5. **Changing network later:** edit `config.h`, uncomment `-DWIFI_FORCE_CONFIG` under `[env:dial]` in `platformio.ini` for one upload, then comment it out again.
 
 ## Project layout
 

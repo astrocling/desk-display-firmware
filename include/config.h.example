@@ -2,9 +2,10 @@
 
 #include "desk_display/radar_poi.hpp"
 
-// Copy to config.h and fill in local values:
-//   cp include/config.h.example include/config.h
-// config.h is git-ignored — do not commit secrets.
+// Wi-Fi (2.4 GHz only on the Dial). Real secrets go in gitignored config.h.
+// First boot seeds NVS namespace "wifi". Later boots use NVS unless you build with
+// -DWIFI_FORCE_CONFIG (see platformio.ini [env:dial] commented flag).
+// Leave WIFI_SSID as "your-ssid" only in the example — never commit real passwords.
 
 #define WIFI_SSID "your-ssid"
 #define WIFI_PASS "your-password"
