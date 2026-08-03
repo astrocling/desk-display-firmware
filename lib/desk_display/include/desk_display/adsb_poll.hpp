@@ -57,8 +57,8 @@ class AdsbPoller {
   bool hasLastGood_{false};
   bool hasPending_{false};
   AircraftList lastGood_{};
-  static constexpr std::size_t kBodyCap = 256 * 1024;
-  char body_[kBodyCap]{};
+  /** Response buffer size; heap-allocated per poll (Dial TLS needs free heap). */
+  static constexpr std::size_t kBodyCap = 64 * 1024;
 };
 
 }  // namespace desk_display

@@ -2,6 +2,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 
 namespace desk_display {
 
@@ -74,19 +76,22 @@ MapContextPoller::PollAttemptResult MapContextPoller::tryPollOnce() {
     return PollAttemptResult::HardFail;
   }
 
-  std::size_t bodyLen = 0;
-  if (!httpGet_(url, body_, sizeof(body_), bodyLen, httpUser_)) {
+  auto body = std::unique_ptr<char[]>(new (std::nothrow) char[kBodyCap]);
+  if (!body) {
     return PollAttemptResult::Retry;
   }
-  // Async transport reports terminal HTTP failures as true + empty body so we
-  // stop Retry-spamming (e.g. map/context 404) instead of hammering for 8s.
-  if (bodyLen == 0 || bodyLen >= sizeof(body_)) {
+
+  std::size_t bodyLen = 0;
+  if (!httpGet_(url, body.get(), kBodyCap, bodyLen, httpUser_)) {
+    return PollAttemptResult::Retry;
+  }
+  if (bodyLen == 0 || bodyLen >= kBodyCap) {
     return PollAttemptResult::HardFail;
   }
-  body_[bodyLen] = '\0';
+  body[bodyLen] = '\0';
 
   MapContext parsed{};
-  if (!parseMapContext(body_, parsed)) {
+  if (!parseMapContext(body.get(), parsed)) {
     return PollAttemptResult::HardFail;
   }
 

@@ -4,6 +4,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 
 namespace desk_display {
 
@@ -72,17 +74,22 @@ bool AdsbPoller::tryPollOnce() {
     return false;
   }
 
+  auto body = std::unique_ptr<char[]>(new (std::nothrow) char[kBodyCap]);
+  if (!body) {
+    return false;
+  }
+
   std::size_t bodyLen = 0;
-  if (!httpGet_(url, body_, sizeof(body_), bodyLen, httpUser_)) {
+  if (!httpGet_(url, body.get(), kBodyCap, bodyLen, httpUser_)) {
     return false;
   }
-  if (bodyLen >= sizeof(body_)) {
+  if (bodyLen >= kBodyCap) {
     return false;
   }
-  body_[bodyLen] = '\0';
+  body[bodyLen] = '\0';
 
   AircraftList parsed{};
-  if (!parseAdsb(body_, parsed)) {
+  if (!parseAdsb(body.get(), parsed)) {
     return false;
   }
 
