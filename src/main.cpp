@@ -3,6 +3,7 @@
  */
 #include <Arduino.h>
 
+#include "hal/lvgl_port.hpp"
 #include "net/wifi.hpp"
 
 void setup() {
@@ -10,9 +11,13 @@ void setup() {
   delay(200);
   Serial.println("desk-display-firmware: dial");
   desk_net::wifiSetup();
+  if (!desk_hal::lvglPortInit()) {
+    Serial.println("display: lvgl port failed");
+  }
 }
 
 void loop() {
   desk_net::wifiLoop();
-  delay(100);
+  desk_hal::lvglPortHandler();
+  delay(5);
 }
