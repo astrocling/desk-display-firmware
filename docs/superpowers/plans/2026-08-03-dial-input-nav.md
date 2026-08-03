@@ -612,9 +612,8 @@ void setup() {
   desk_net::wifiSetup();
   if (!desk_hal::lvglPortInit()) {
     Serial.println("display: lvgl port failed");
-  } else {
-    Serial.println("display: ready");
   }
+  // display HAL already prints "display: ready" on success — do not duplicate
   desk_hal::encoderInit();
   desk_hal::touchInit();  // may fail; rotate-only still OK
   desk_hal::navOverlayInit();
@@ -649,7 +648,7 @@ void loop() {
 }
 ```
 
-**Note:** `lvglPortInit` already leaves green background; do **not** remove that. If `display: ready` is already printed inside display init, avoid duplicate — match current code (today only `lvgl port failed` is printed from main; display HAL may already print `display: ready`). Keep a single clear ready line.
+**Note:** `lvglPortInit` already leaves the green background; `display.cpp` already prints `display: ready` — do not print it again from `main`.
 
 - [ ] **Step 3: Compile dial**
 
