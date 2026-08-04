@@ -2,6 +2,7 @@
 
 #include "desk_display/center_tap.hpp"
 #include "desk_display/encoder_decode.hpp"
+#include "desk_display/touch_gesture.hpp"
 #include "desk_display/nav.hpp"
 #include "desk_display/nav_status.hpp"
 
@@ -13,6 +14,11 @@ using desk_display::clampEncoderDelta;
 using desk_display::formatNavOverlay;
 using desk_display::formatNavSerial;
 using desk_display::kCenterTapMaxMs;
+using desk_display::TouchGestureDetector;
+using desk_display::TouchGestureKind;
+using desk_display::kTouchDoubleGapMs;
+using desk_display::kTouchLongPressMs;
+using desk_display::kTouchTapMaxMs;
 using desk_display::kEncoderDeltaClamp;
 using desk_display::navModeUpper;
 using desk_display::screenTitleUpper;
@@ -68,6 +74,59 @@ void test_center_tap_refractory(void) {
   TEST_ASSERT_FALSE(t.onContact(false, 1200));  // still in refractory from 1100
 }
 
+void test_touch_single_tap_after_gap(void) {
+  TouchGestureDetector d;
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.update(true, 10, 20, 1000).kind);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.update(false, 10, 20, 1100).kind);
+  // Still inside double window — no Tap yet
+  TEST_ASSERT_EQUAL(TouchGestureKind::None,
+                    d.update(false, 10, 20, 1100 + kTouchDoubleGapMs - 1).kind);
+  const auto tap = d.update(false, 10, 20, 1100 + kTouchDoubleGapMs);
+  TEST_ASSERT_EQUAL(TouchGestureKind::Tap, tap.kind);
+  TEST_ASSERT_EQUAL_INT16(10, tap.x);
+  TEST_ASSERT_EQUAL_INT16(20, tap.y);
+}
+
+void test_touch_double_tap(void) {
+  TouchGestureDetector d;
+  d.update(true, 1, 1, 1000);
+  d.update(false, 1, 1, 1100);
+  d.update(true, 2, 3, 1200);
+  const auto dbl = d.update(false, 2, 3, 1300);
+  TEST_ASSERT_EQUAL(TouchGestureKind::DoubleTap, dbl.kind);
+  TEST_ASSERT_EQUAL_INT16(2, dbl.x);
+  TEST_ASSERT_EQUAL_INT16(3, dbl.y);
+  // Pending single must not fire later
+  TEST_ASSERT_EQUAL(TouchGestureKind::None,
+                    d.update(false, 0, 0, 1300 + kTouchDoubleGapMs + 50).kind);
+}
+
+void test_touch_long_press(void) {
+  TouchGestureDetector d;
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.update(true, 5, 6, 1000).kind);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None,
+                    d.update(true, 5, 6, 1000 + kTouchLongPressMs - 1).kind);
+  const auto lp = d.update(true, 5, 6, 1000 + kTouchLongPressMs);
+  TEST_ASSERT_EQUAL(TouchGestureKind::LongPress, lp.kind);
+  TEST_ASSERT_EQUAL_INT16(5, lp.x);
+  TEST_ASSERT_EQUAL_INT16(6, lp.y);
+  // Up after long must not emit Tap
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.update(false, 5, 6, 2000).kind);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None,
+                    d.update(false, 5, 6, 2000 + kTouchDoubleGapMs).kind);
+}
+
+void test_touch_hold_too_long_for_tap_without_long(void) {
+  // Hold past tap max but release before long → neither tap nor long
+  TouchGestureDetector d;
+  d.update(true, 0, 0, 1000);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None,
+                    d.update(false, 0, 0, 1000 + kTouchTapMaxMs + 1).kind);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None,
+                    d.update(false, 0, 0, 1000 + kTouchTapMaxMs + 1 + kTouchDoubleGapMs)
+                        .kind);
+}
+
 void test_nav_status_strings(void) {
   TEST_ASSERT_EQUAL_STRING("CLOCK", screenTitleUpper(Screen::Clock));
   TEST_ASSERT_EQUAL_STRING("WEATHER", screenTitleUpper(Screen::Weather));
@@ -95,6 +154,10 @@ int main(int, char**) {
   RUN_TEST(test_center_tap_short_press);
   RUN_TEST(test_center_tap_long_hold_ignored);
   RUN_TEST(test_center_tap_refractory);
+  RUN_TEST(test_touch_single_tap_after_gap);
+  RUN_TEST(test_touch_double_tap);
+  RUN_TEST(test_touch_long_press);
+  RUN_TEST(test_touch_hold_too_long_for_tap_without_long);
   RUN_TEST(test_nav_status_strings);
   return UNITY_END();
 }
