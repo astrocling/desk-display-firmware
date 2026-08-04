@@ -9,8 +9,9 @@
 namespace desk_hal {
 namespace {
 
-// Set true if rotation direction is inverted on hardware.
-constexpr bool kEncoderInvert = false;
+// Invert so clockwise (viewer-facing, USB-at-top desk mount) maps to positive
+// ticks (next screen / later hours). Display MADCTL is also 180° for that mount.
+constexpr bool kEncoderInvert = true;
 
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 volatile int32_t s_accum = 0;
