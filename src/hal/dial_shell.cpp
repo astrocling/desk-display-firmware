@@ -303,7 +303,9 @@ void on_rotate_focused(int8_t delta) {
       g_timezones.onRotate(delta);
       break;
     case desk_display::Screen::Weather:
-      g_weather.onRotate(delta);
+      // Positive WeatherScreen scrub = later hours. With USB-at-top mount the
+      // focused encoder sense still feels CCW→later; flip here only.
+      g_weather.onRotate(static_cast<int>(-delta));
       break;
     case desk_display::Screen::Sports:
       g_sports.onRotate(delta);
