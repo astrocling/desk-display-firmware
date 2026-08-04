@@ -583,8 +583,19 @@ void build_airspace(lv_obj_t* layer, const desk_display::RadarView& v) {
     }
     const uint32_t color = airspace_color(ring.cls);
     const bool dashed = airspace_dashed(ring.cls);
-    for (uint8_t i = 0; i < ring.pointCount; ++i) {
-      const uint8_t j = static_cast<uint8_t>((i + 1) % ring.pointCount);
+    // Live Class D rings often repeat the first vertex as the last (closed
+    // GeoJSON). Skip that zero-length wrap edge.
+    const bool closedDuplicate =
+        ring.pointCount >= 3 &&
+        ring.offsetXMi[0] == ring.offsetXMi[ring.pointCount - 1] &&
+        ring.offsetYMi[0] == ring.offsetYMi[ring.pointCount - 1];
+    const uint8_t edgeCount =
+        closedDuplicate ? static_cast<uint8_t>(ring.pointCount - 1)
+                        : ring.pointCount;
+    for (uint8_t i = 0; i < edgeCount; ++i) {
+      const uint8_t j = closedDuplicate
+                            ? static_cast<uint8_t>(i + 1)
+                            : static_cast<uint8_t>((i + 1) % ring.pointCount);
       const lv_coord_t x0 =
           static_cast<lv_coord_t>(cx + ring.offsetXMi[i] * scale);
       const lv_coord_t y0 =

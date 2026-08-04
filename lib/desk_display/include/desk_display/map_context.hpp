@@ -12,6 +12,8 @@ struct MapAirport {
   char name[48];
   double lat;
   double lon;
+  /** False = non-towered. Missing JSON field parses as true (legacy fixtures). */
+  bool towered;
 };
 
 struct MapAirspaceRing {

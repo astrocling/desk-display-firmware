@@ -534,6 +534,7 @@ void test_map_context_url_from_radar_home(void) {
   TEST_ASSERT_NOT_NULL(std::strstr(url, "lat="));
   TEST_ASSERT_NOT_NULL(std::strstr(url, "lon="));
   TEST_ASSERT_NOT_NULL(std::strstr(url, "radiusMi="));
+  TEST_ASSERT_NOT_NULL(std::strstr(url, "toweredOnly=1"));
 }
 
 void test_adsb_url_from_radar_home(void) {
@@ -566,6 +567,7 @@ void test_radar_bind_map_context_projects_airport(void) {
   ctx.airports[0].lat = kRadarHomeLat;
   ctx.airports[0].lon =
       kRadarHomeLon + 10.0 / (69.0 * std::cos(kRadarHomeLat * 0.017453292519943295));
+  ctx.airports[0].towered = true;
   r.bindMapContext(ctx);
   const RadarView v = r.view();
   TEST_ASSERT_EQUAL(1, v.staticMarkCount);
@@ -574,6 +576,33 @@ void test_radar_bind_map_context_projects_airport(void) {
   TEST_ASSERT_EQUAL(static_cast<int>(RadarStaticMark::Kind::Airport),
                     static_cast<int>(v.staticMarks[0].kind));
   TEST_ASSERT_EQUAL_STRING("KTEST", v.staticMarks[0].label);
+}
+
+void test_radar_bind_skips_nontowered_airports(void) {
+  ScreenRadar r;
+  MapContext ctx{};
+  ctx.airportCount = 3;
+
+  std::snprintf(ctx.airports[0].icao, sizeof(ctx.airports[0].icao), "1WF");
+  ctx.airports[0].lat = kRadarHomeLat;
+  ctx.airports[0].lon = kRadarHomeLon + 0.01;
+  ctx.airports[0].towered = false;
+
+  std::snprintf(ctx.airports[1].icao, sizeof(ctx.airports[1].icao), "KDAY");
+  ctx.airports[1].lat = kRadarHomeLat + 0.01;
+  ctx.airports[1].lon = kRadarHomeLon;
+  ctx.airports[1].towered = true;
+
+  std::snprintf(ctx.airports[2].icao, sizeof(ctx.airports[2].icao), "KFFO");
+  ctx.airports[2].lat = kRadarHomeLat - 0.01;
+  ctx.airports[2].lon = kRadarHomeLon + 0.02;
+  ctx.airports[2].towered = true;
+
+  r.bindMapContext(ctx);
+  const RadarView v = r.view();
+  TEST_ASSERT_EQUAL(2, v.staticMarkCount);
+  TEST_ASSERT_EQUAL_STRING("KDAY", v.staticMarks[0].label);
+  TEST_ASSERT_EQUAL_STRING("KFFO", v.staticMarks[1].label);
 }
 
 void test_radar_bind_map_context_projects_highways_and_shelves(void) {
@@ -617,6 +646,7 @@ void test_radar_static_selection_survives_reproject(void) {
   ctx.airports[0].lat = kRadarHomeLat;
   ctx.airports[0].lon =
       kRadarHomeLon + 10.0 / (69.0 * std::cos(kRadarHomeLat * 0.017453292519943295));
+  ctx.airports[0].towered = true;
   r.bindMapContext(ctx);
 
   TEST_ASSERT_TRUE(r.selectStaticMark(0));
@@ -641,6 +671,7 @@ void test_radar_static_select_clears_blip_select(void) {
   std::snprintf(ctx.airports[0].icao, sizeof(ctx.airports[0].icao), "KTEST");
   ctx.airports[0].lat = kRadarHomeLat + 0.02;
   ctx.airports[0].lon = kRadarHomeLon;
+  ctx.airports[0].towered = true;
   r.bindMapContext(ctx);
 
   TEST_ASSERT_TRUE(r.selectBlip(0));
@@ -840,6 +871,7 @@ int main(int argc, char** argv) {
   RUN_TEST(test_radar_idle_settle_closes_settings);
   RUN_TEST(test_radar_set_pois_adds_home_mark);
   RUN_TEST(test_radar_bind_map_context_projects_airport);
+  RUN_TEST(test_radar_bind_skips_nontowered_airports);
   RUN_TEST(test_radar_bind_map_context_projects_highways_and_shelves);
   RUN_TEST(test_radar_static_selection_survives_reproject);
   RUN_TEST(test_radar_static_select_clears_blip_select);

@@ -658,6 +658,9 @@ void ScreenRadar::reprojectOverlays() {
       std::size_t airportCandidateCount = 0;
       for (std::size_t i = 0; i < mapContext_.airportCount; ++i) {
         const MapAirport& ap = mapContext_.airports[i];
+        if (!ap.towered) {
+          continue;
+        }
         const float dist =
             distanceMiles(centerLat_, centerLon_, ap.lat, ap.lon);
         if (dist > rangeMiles_ + 0.01f) {

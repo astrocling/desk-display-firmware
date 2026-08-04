@@ -188,6 +188,8 @@ void test_parse_map_context_dayton(void) {
   TEST_ASSERT_TRUE(parseMapContext(g_buf, ctx));
   TEST_ASSERT_EQUAL(2, ctx.airportCount);
   TEST_ASSERT_EQUAL_STRING("KDAY", ctx.airports[0].icao);
+  TEST_ASSERT_TRUE(ctx.airports[0].towered);
+  TEST_ASSERT_TRUE(ctx.airports[1].towered);
   TEST_ASSERT_EQUAL(3, ctx.ringCount);
   TEST_ASSERT_TRUE(ctx.rings[0].cls == AirspaceClass::D);
   TEST_ASSERT_TRUE(ctx.rings[0].pointCount >= 4);
@@ -197,12 +199,46 @@ void test_parse_map_context_dayton(void) {
   TEST_ASSERT_TRUE(ctx.highways[0].pointCount >= 2);
 }
 
+void test_parse_map_context_skips_nontowered(void) {
+  MapContext ctx{};
+  TEST_ASSERT_TRUE(parseMapContext(
+      "{\"airports\":["
+      "{\"icao\":\"1WF\",\"name\":\"Helipad\",\"lat\":40.0,\"lon\":-84.0,\"towered\":false},"
+      "{\"icao\":\"KDAY\",\"name\":\"Dayton\",\"lat\":39.9,\"lon\":-84.2,\"towered\":true},"
+      "{\"icao\":\"KFFO\",\"name\":\"Wright-Patt\",\"lat\":39.8,\"lon\":-84.0},"
+      "{\"icao\":\"0OH4\",\"name\":\"Strip\",\"lat\":40.1,\"lon\":-84.1,\"towered\":false}"
+      "],\"rings\":[{\"class\":\"D\",\"id\":\"KDAY_D\",\"points\":["
+      "[39.95,-84.28],[39.95,-84.16],[39.9,-84.14],[39.85,-84.16],"
+      "[39.85,-84.28],[39.9,-84.3],[39.95,-84.28]]}]}",
+      ctx));
+  TEST_ASSERT_EQUAL(2, ctx.airportCount);
+  TEST_ASSERT_EQUAL_STRING("KDAY", ctx.airports[0].icao);
+  TEST_ASSERT_EQUAL_STRING("KFFO", ctx.airports[1].icao);
+  TEST_ASSERT_TRUE(ctx.airports[0].towered);
+  TEST_ASSERT_TRUE(ctx.airports[1].towered);
+  TEST_ASSERT_EQUAL(1, ctx.ringCount);
+  TEST_ASSERT_EQUAL_STRING("KDAY_D", ctx.rings[0].id);
+  TEST_ASSERT_EQUAL(7, ctx.rings[0].pointCount);
+}
+
 void test_parse_map_context_rejects_bad_class(void) {
   MapContext ctx{};
   TEST_ASSERT_TRUE(parseMapContext(
       "{\"airports\":[],\"rings\":[{\"class\":\"E\",\"id\":\"x\",\"points\":[[1,2],[3,4],[5,6]]}]}",
       ctx));
   TEST_ASSERT_EQUAL(0, ctx.ringCount);
+}
+
+void test_parse_map_context_preserves_out_on_bad_json(void) {
+  MapContext ctx{};
+  TEST_ASSERT_TRUE(parseMapContext(
+      "{\"airports\":[{\"icao\":\"KDAY\",\"name\":\"Dayton\",\"lat\":39.9,\"lon\":-84.2}],"
+      "\"rings\":[]}",
+      ctx));
+  TEST_ASSERT_EQUAL(1, ctx.airportCount);
+  TEST_ASSERT_FALSE(parseMapContext("{not-json", ctx));
+  TEST_ASSERT_EQUAL(1, ctx.airportCount);
+  TEST_ASSERT_EQUAL_STRING("KDAY", ctx.airports[0].icao);
 }
 
 void test_parse_adsb_fixture(void) {
@@ -247,7 +283,9 @@ int main(int argc, char** argv) {
   RUN_TEST(test_parse_scores_flagstand_next_with_status);
   RUN_TEST(test_parse_airport_fixture);
   RUN_TEST(test_parse_map_context_dayton);
+  RUN_TEST(test_parse_map_context_skips_nontowered);
   RUN_TEST(test_parse_map_context_rejects_bad_class);
+  RUN_TEST(test_parse_map_context_preserves_out_on_bad_json);
   RUN_TEST(test_parse_adsb_fixture);
   RUN_TEST(test_not_ready_helper);
   return UNITY_END();

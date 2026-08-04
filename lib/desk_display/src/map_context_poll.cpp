@@ -19,9 +19,12 @@ bool buildMapContextUrl(char* buf, std::size_t bufLen, double lat, double lon,
   const char* const base = "https://desk-display-backend.vercel.app";
 #endif
 
-  const int written = std::snprintf(buf, bufLen,
-                                    "%s/api/map/context?lat=%g&lon=%g&radiusMi=%g", base, lat,
-                                    lon, radiusMi);
+  // toweredOnly=1 keeps Dial payloads small (browser omits the flag and still
+  // receives the full catalog for its airport-preset UI).
+  const int written = std::snprintf(
+      buf, bufLen,
+      "%s/api/map/context?lat=%g&lon=%g&radiusMi=%g&toweredOnly=1", base, lat,
+      lon, radiusMi);
   return written > 0 && static_cast<std::size_t>(written) < bufLen;
 }
 

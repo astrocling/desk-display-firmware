@@ -127,12 +127,14 @@ bool parseMapContext(const char* json, MapContext& out) {
     return false;
   }
 
-  std::memset(&out, 0, sizeof(out));
-
+  // Deserialize before touching `out` so a failed parse (OOM / truncated
+  // body) does not wipe a previously good Dial bind (sticky stub hexagon).
   JsonDocument doc;
   if (deserializeJson(doc, json)) {
     return false;
   }
+
+  std::memset(&out, 0, sizeof(out));
 
   if (doc["airports"].is<JsonArrayConst>()) {
     for (JsonObjectConst ap : doc["airports"].as<JsonArrayConst>()) {
@@ -147,6 +149,14 @@ bool parseMapContext(const char* json, MapContext& out) {
         continue;
       }
 
+      // Live payloads tag non-towered; omit them so the 40-slot cap keeps
+      // towered ICAOs (KDAY/KFFO). Missing field = include (dayton fixture).
+      const bool towered =
+          ap["towered"].isNull() ? true : ap["towered"].as<bool>();
+      if (!towered) {
+        continue;
+      }
+
       MapAirport& item = out.airports[out.airportCount];
       std::memset(&item, 0, sizeof(item));
       copyStr(item.icao, sizeof(item.icao), ap["icao"].as<const char*>());
@@ -155,6 +165,7 @@ bool parseMapContext(const char* json, MapContext& out) {
       }
       item.lat = ap["lat"].as<double>();
       item.lon = ap["lon"].as<double>();
+      item.towered = true;
       ++out.airportCount;
     }
   }

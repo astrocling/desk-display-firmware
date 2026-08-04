@@ -413,7 +413,13 @@ void dialShellOnTick(uint32_t elapsed_ms) {
   // Scratch lives in PSRAM — MapContext (~24KB) must not sit on the loop stack.
   if (g_map_ctx_poll->takeContext(*g_map_scratch)) {
     g_radar->bindMapContext(*g_map_scratch);
-    Serial.println("map: bound");
+    Serial.printf("map: bound airports=%u rings=%u",
+                  static_cast<unsigned>(g_map_scratch->airportCount),
+                  static_cast<unsigned>(g_map_scratch->ringCount));
+    for (std::size_t i = 0; i < g_map_scratch->ringCount && i < 4; ++i) {
+      Serial.printf(" %s", g_map_scratch->rings[i].id);
+    }
+    Serial.println();
     radar_dirty = true;
   }
 
