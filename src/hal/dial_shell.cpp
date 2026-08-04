@@ -4,6 +4,7 @@
 #include "desk_display/map_context_poll.hpp"
 #include "desk_display/nav.hpp"
 #include "desk_display/nav_status.hpp"
+#include "desk_display/radar_prefs.hpp"
 #include "desk_display/scores_poll.hpp"
 #include "desk_display/screen_clock.hpp"
 #include "desk_display/screen_radar.hpp"
@@ -214,6 +215,55 @@ void settle_focused_screens() {
   }
 }
 
+void persist_radar_prefs() {
+  if (g_radar == nullptr) {
+    return;
+  }
+  desk_display::saveRadarSettingsNvs(g_radar->settings());
+}
+
+void on_radar_tap(int16_t x, int16_t y) {
+  if (g_radar == nullptr || g_body == nullptr) {
+    return;
+  }
+  if (g_radar->settingsOpen()) {
+    const auto prev = g_radar->settings();
+    if (desk_ui::radar_lvgl_settings_hit(x, y, *g_radar)) {
+      const auto& cur = g_radar->settings();
+      if (cur.declutter != prev.declutter ||
+          cur.showAirports != prev.showAirports ||
+          cur.showAirspace != prev.showAirspace ||
+          cur.showRoads != prev.showRoads ||
+          cur.demoMode != prev.demoMode) {
+        persist_radar_prefs();
+        // Demo bind in Task 5 when demoMode rises
+      }
+      refresh_content();
+    }
+    return;
+  }
+
+  const auto rv = g_radar->view();
+  std::size_t nearest = 0;
+  if (desk_ui::radar_lvgl_hit_blip(g_body, rv, x, y, &nearest)) {
+    if (g_radar->hasSelection() && g_radar->selectedIndex() == nearest) {
+      g_radar->clearSelection();
+    } else {
+      g_radar->selectBlip(nearest);
+    }
+  } else if (desk_ui::radar_lvgl_hit_static(g_body, rv, x, y, &nearest)) {
+    if (rv.hasStaticSelection && rv.selectedStaticIndex == nearest) {
+      g_radar->clearStaticSelection();
+    } else {
+      g_radar->selectStaticMark(nearest);
+    }
+  } else {
+    g_radar->clearSelection();
+    g_radar->clearStaticSelection();
+  }
+  refresh_content();
+}
+
 void on_rotate_focused(int8_t delta) {
   switch (g_nav.focused()) {
     case desk_display::Screen::Timezones:
@@ -266,6 +316,13 @@ bool dialShellInit() {
 #if defined(RADAR_POI_COUNT)
   g_radar->setPois(RADAR_POIS, static_cast<std::size_t>(RADAR_POI_COUNT));
 #endif
+
+  {
+    desk_display::RadarSettings prefs =
+        desk_display::radarSettingsFactoryDefaults();
+    desk_display::loadRadarSettingsNvs(prefs);
+    g_radar->setSettings(prefs);
+  }
 
   g_root = lv_obj_create(lv_scr_act());
   lv_obj_set_size(g_root, kLcdWidth, kLcdHeight);
@@ -356,10 +413,12 @@ void dialShellOnTouch(const desk_display::TouchGesture& g) {
 
   if (g.kind == TouchGestureKind::Tap) {
     if (g_nav.mode() != NavMode::Focused) {
-      return;  // Carousel: ignore
+      return;
     }
-    // Task 4 fills Radar tap; for now idle_reset only if non-radar
     g_nav.idle_reset();
+    if (g_nav.focused() == Screen::Radar) {
+      on_radar_tap(g.x, g.y);
+    }
     return;
   }
 
@@ -368,7 +427,11 @@ void dialShellOnTouch(const desk_display::TouchGesture& g) {
       return;
     }
     g_nav.idle_reset();
-    // Task 4 opens settings
+    if (g_nav.focused() == Screen::Radar && g_radar != nullptr &&
+        !g_radar->settingsOpen()) {
+      g_radar->openSettings();
+      refresh_content();
+    }
     return;
   }
 }
