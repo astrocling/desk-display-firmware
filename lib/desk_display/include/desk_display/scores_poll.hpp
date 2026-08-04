@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 namespace desk_display {
 
@@ -31,8 +32,9 @@ class ScoresPoller {
   bool hasLastGood_{false};
   bool hasPending_{false};
   Scores lastGood_{};
-  /** Response buffer size; heap-allocated per poll (Dial TLS needs free BSS/heap). */
+  /** Reused across ticks — async transports poll every frame while in flight. */
   static constexpr std::size_t kBodyCap = 8 * 1024;
+  std::unique_ptr<char[]> bodyBuf_{};
 };
 
 }  // namespace desk_display

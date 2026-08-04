@@ -5,14 +5,16 @@
 
 namespace desk_net {
 
-/** Separate result slots so map-context and ADS-B can prefetch independently. */
+/** Separate result slots so pollers can prefetch without sharing in-flight state. */
 enum class HttpAsyncChannel : std::uint8_t {
   RadarMap = 0,
   RadarAdsb = 1,
+  Weather = 2,
+  Scores = 3,
 };
 
 /**
- * Non-blocking HTTPS GET for Dial Radar (FreeRTOS worker + TLS).
+ * Non-blocking HTTPS GET for Dial (FreeRTOS worker + TLS).
  * Same contract as sim async / AdsbHttpGetFn:
  * - true + bodyLen>0: complete response copied into `body`
  * - true + bodyLen==0: terminal failure (pollers HardFail / give up interval)

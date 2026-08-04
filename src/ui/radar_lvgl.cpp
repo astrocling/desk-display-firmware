@@ -1827,7 +1827,8 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
   lv_obj_set_style_pad_all(g_static_layer, 0, 0);
   lv_obj_clear_flag(g_static_layer, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(g_static_layer, LV_OBJ_FLAG_CLICKABLE);
-  rebuild_static_overlay(g_static_layer, v);
+  // Defer highways/airspace/snapshot to the first animate tick so carousel
+  // enter can paint rings+sweep before the map line storm.
 
   build_sweep(g_disc, v.sweepAngleDeg);
 

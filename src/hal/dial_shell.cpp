@@ -18,7 +18,6 @@
 
 #include "adsb_demo_fixture.h"
 #include "hal/display.hpp"
-#include "net/http.hpp"
 #include "net/http_async.hpp"
 #include "net/ntp.hpp"
 #include "../ui/carousel_lvgl.hpp"
@@ -82,6 +81,18 @@ bool dialMapHttpGet(const char* url, char* body, std::size_t bodyCap,
 bool dialAdsbHttpGet(const char* url, char* body, std::size_t bodyCap,
                      std::size_t& bodyLen, void* user) {
   return desk_net::httpGetAsync(desk_net::HttpAsyncChannel::RadarAdsb, url, body,
+                                bodyCap, bodyLen, user);
+}
+
+bool dialWeatherHttpGet(const char* url, char* body, std::size_t bodyCap,
+                        std::size_t& bodyLen, void* user) {
+  return desk_net::httpGetAsync(desk_net::HttpAsyncChannel::Weather, url, body,
+                                bodyCap, bodyLen, user);
+}
+
+bool dialScoresHttpGet(const char* url, char* body, std::size_t bodyCap,
+                       std::size_t& bodyLen, void* user) {
+  return desk_net::httpGetAsync(desk_net::HttpAsyncChannel::Scores, url, body,
                                 bodyCap, bodyLen, user);
 }
 
@@ -326,12 +337,12 @@ bool dialShellInit() {
     return false;
   }
 
-  g_weather_poll.setHttpGet(&desk_net::httpGet, nullptr);
-  g_scores_poll.setHttpGet(&desk_net::httpGet, nullptr);
   if (!desk_net::httpAsyncInit()) {
     Serial.println("shell: http-async init failed");
     return false;
   }
+  g_weather_poll.setHttpGet(&dialWeatherHttpGet, nullptr);
+  g_scores_poll.setHttpGet(&dialScoresHttpGet, nullptr);
   g_adsb_poll->setHttpGet(&dialAdsbHttpGet, nullptr);
   g_map_ctx_poll->setHttpGet(&dialMapHttpGet, nullptr);
 
@@ -485,8 +496,9 @@ void dialShellOnTick(uint32_t elapsed_ms) {
     }
   }
 
-  // Rebuild UI before any blocking HTTP so carousel stays responsive and TLS
-  // does not run on a half-torn-down body.
+  // Rebuild UI before kicking HTTP so carousel chrome updates immediately;
+  // weather/scores/radar GETs are async (http_async worker) and must not
+  // stall LVGL on a half-torn-down body.
   const auto idle = g_nav.on_tick(elapsed_ms);
   if (idle == desk_display::IdleEvent::SettleFocused) {
     settle_focused_screens();

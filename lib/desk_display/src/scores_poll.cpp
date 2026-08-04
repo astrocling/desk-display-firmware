@@ -66,23 +66,24 @@ bool ScoresPoller::tryPollOnce() {
     return false;
   }
 
-  // Heap buffer: keep BSS small so Dial TLS (mbedTLS) can allocate.
-  auto body = std::unique_ptr<char[]>(new (std::nothrow) char[kBodyCap]);
-  if (!body) {
-    return false;
+  if (!bodyBuf_) {
+    bodyBuf_.reset(new (std::nothrow) char[kBodyCap]);
+    if (!bodyBuf_) {
+      return false;
+    }
   }
 
   std::size_t bodyLen = 0;
-  if (!httpGet_(url, body.get(), kBodyCap, bodyLen, httpUser_)) {
+  if (!httpGet_(url, bodyBuf_.get(), kBodyCap, bodyLen, httpUser_)) {
     return false;
   }
   if (bodyLen >= kBodyCap) {
     return false;
   }
-  body[bodyLen] = '\0';
+  bodyBuf_[bodyLen] = '\0';
 
   Scores parsed{};
-  if (!parseScores(body.get(), parsed)) {
+  if (!parseScores(bodyBuf_.get(), parsed)) {
     return false;
   }
 

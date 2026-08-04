@@ -25,7 +25,7 @@ struct AsyncSlot {
   std::size_t bodyCap = 0;
 };
 
-constexpr int kChannelCount = 2;
+constexpr int kChannelCount = 4;
 constexpr std::size_t kSlotBodyCap = 64 * 1024;
 /** mbedTLS needs a deep stack; match the bumped Arduino loop size. */
 constexpr uint32_t kWorkerStackBytes = 49152;
