@@ -74,26 +74,27 @@ bool AdsbPoller::tryPollOnce() {
     return false;
   }
 
-  auto body = std::unique_ptr<char[]>(new (std::nothrow) char[kBodyCap]);
-  if (!body) {
-    return false;
+  if (!bodyBuf_) {
+    bodyBuf_.reset(new (std::nothrow) char[kBodyCap]);
+    if (!bodyBuf_) {
+      return false;
+    }
   }
 
   std::size_t bodyLen = 0;
-  if (!httpGet_(url, body.get(), kBodyCap, bodyLen, httpUser_)) {
+  if (!httpGet_(url, bodyBuf_.get(), kBodyCap, bodyLen, httpUser_)) {
     return false;
   }
   if (bodyLen >= kBodyCap) {
     return false;
   }
-  body[bodyLen] = '\0';
+  bodyBuf_[bodyLen] = '\0';
 
-  AircraftList parsed{};
-  if (!parseAdsb(body.get(), parsed)) {
+  // Parse into the member — avoid a large stack temporary on the Dial loop task.
+  if (!parseAdsb(bodyBuf_.get(), lastGood_)) {
     return false;
   }
 
-  lastGood_ = parsed;
   hasLastGood_ = true;
   hasPending_ = true;
   return true;

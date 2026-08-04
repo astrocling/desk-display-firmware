@@ -76,13 +76,15 @@ MapContextPoller::PollAttemptResult MapContextPoller::tryPollOnce() {
     return PollAttemptResult::HardFail;
   }
 
-  auto body = std::unique_ptr<char[]>(new (std::nothrow) char[kBodyCap]);
-  if (!body) {
-    return PollAttemptResult::Retry;
+  if (!bodyBuf_) {
+    bodyBuf_.reset(new (std::nothrow) char[kBodyCap]);
+    if (!bodyBuf_) {
+      return PollAttemptResult::Retry;
+    }
   }
 
   std::size_t bodyLen = 0;
-  if (!httpGet_(url, body.get(), kBodyCap, bodyLen, httpUser_)) {
+  if (!httpGet_(url, bodyBuf_.get(), kBodyCap, bodyLen, httpUser_)) {
     return PollAttemptResult::Retry;
   }
   // Async transport reports terminal HTTP failures as true + empty body so we
@@ -90,14 +92,14 @@ MapContextPoller::PollAttemptResult MapContextPoller::tryPollOnce() {
   if (bodyLen == 0 || bodyLen >= kBodyCap) {
     return PollAttemptResult::HardFail;
   }
-  body[bodyLen] = '\0';
+  bodyBuf_[bodyLen] = '\0';
 
-  MapContext parsed{};
-  if (!parseMapContext(body.get(), parsed)) {
+  // Parse straight into the member — MapContext is ~24KB; a stack temporary
+  // would overflow the Dial Arduino loop task (even at 48KB with TLS frames).
+  if (!parseMapContext(bodyBuf_.get(), lastGood_)) {
     return PollAttemptResult::HardFail;
   }
 
-  lastGood_ = parsed;
   hasLastGood_ = true;
   hasPending_ = true;
   return PollAttemptResult::Success;

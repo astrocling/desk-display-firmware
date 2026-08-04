@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 namespace desk_display {
 
@@ -38,7 +39,9 @@ class MapContextPoller {
   bool hasLastGood_{false};
   bool hasPending_{false};
   MapContext lastGood_{};
-  /** Response buffer size; heap-allocated per poll (Dial TLS needs free heap). */
+  /** Reused across ticks — async transports poll every frame while in flight. */
+  std::unique_ptr<char[]> bodyBuf_{};
+  /** Response buffer size; heap-allocated once (Dial TLS needs free heap). */
   static constexpr std::size_t kBodyCap = 64 * 1024;
 };
 

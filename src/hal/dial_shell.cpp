@@ -15,6 +15,7 @@
 
 #include "hal/display.hpp"
 #include "net/http.hpp"
+#include "net/http_async.hpp"
 #include "net/ntp.hpp"
 #include "../ui/carousel_lvgl.hpp"
 #include "../ui/clock_lvgl.hpp"
@@ -62,18 +63,20 @@ desk_display::AdsbPoller* g_adsb_poll = nullptr;
 desk_display::MapContextPoller* g_map_ctx_poll = nullptr;
 desk_display::MapContext* g_map_scratch = nullptr;
 desk_display::AircraftList* g_ac_scratch = nullptr;
-bool g_radar_http_used = false;
 /** Cap Classic sweep UI updates — full overlay rebuild every ~5ms OOMs LVGL. */
 uint32_t g_radar_ui_accum_ms = 0;
-constexpr uint32_t kRadarUiPeriodMs = 50;
+constexpr uint32_t kRadarUiPeriodMs = 33;
 
-bool dialRadarHttpGet(const char* url, char* body, std::size_t bodyCap,
-                      std::size_t& bodyLen, void* user) {
-  if (g_radar_http_used) {
-    return false;  // Defer — poller retries next tick.
-  }
-  g_radar_http_used = true;
-  return desk_net::httpGet(url, body, bodyCap, bodyLen, user);
+bool dialMapHttpGet(const char* url, char* body, std::size_t bodyCap,
+                    std::size_t& bodyLen, void* user) {
+  return desk_net::httpGetAsync(desk_net::HttpAsyncChannel::RadarMap, url, body,
+                                bodyCap, bodyLen, user);
+}
+
+bool dialAdsbHttpGet(const char* url, char* body, std::size_t bodyCap,
+                     std::size_t& bodyLen, void* user) {
+  return desk_net::httpGetAsync(desk_net::HttpAsyncChannel::RadarAdsb, url, body,
+                                bodyCap, bodyLen, user);
 }
 
 lv_obj_t* g_root = nullptr;
@@ -252,8 +255,12 @@ bool dialShellInit() {
 
   g_weather_poll.setHttpGet(&desk_net::httpGet, nullptr);
   g_scores_poll.setHttpGet(&desk_net::httpGet, nullptr);
-  g_adsb_poll->setHttpGet(&dialRadarHttpGet, nullptr);
-  g_map_ctx_poll->setHttpGet(&dialRadarHttpGet, nullptr);
+  if (!desk_net::httpAsyncInit()) {
+    Serial.println("shell: http-async init failed");
+    return false;
+  }
+  g_adsb_poll->setHttpGet(&dialAdsbHttpGet, nullptr);
+  g_map_ctx_poll->setHttpGet(&dialMapHttpGet, nullptr);
 
 #if defined(RADAR_POI_COUNT)
   g_radar->setPois(RADAR_POIS, static_cast<std::size_t>(RADAR_POI_COUNT));
@@ -372,7 +379,6 @@ void dialShellOnTick(uint32_t elapsed_ms) {
   }
 
   const bool radar_active = g_nav.active_screen() == Screen::Radar;
-  g_radar_http_used = false;
   g_adsb_poll->setActive(radar_active);
   g_map_ctx_poll->setActive(radar_active);
 
@@ -384,10 +390,8 @@ void dialShellOnTick(uint32_t elapsed_ms) {
                               g_radar->rangeMiles());
   }
 
-  // Map first so when both are due, ADS-B defers via dialRadarHttpGet.
-  g_map_ctx_poll->onTick(elapsed_ms);
-  g_adsb_poll->onTick(elapsed_ms);
-
+  // Advance Classic sweep on the UI before kicking/polling HTTP so a slow
+  // bind never starves the phosphor arm (GETs run on http_async worker).
   bool radar_dirty = false;
   if (radar_active) {
     g_radar_ui_accum_ms += elapsed_ms;
@@ -398,8 +402,15 @@ void dialShellOnTick(uint32_t elapsed_ms) {
   } else {
     g_radar_ui_accum_ms = 0;
   }
+  if (radar_dirty) {
+    refresh_content();
+    radar_dirty = false;
+  }
 
-  // Scratch lives in PSRAM — MapContext (~24KB) must not sit on the 24KB loop stack.
+  g_map_ctx_poll->onTick(elapsed_ms);
+  g_adsb_poll->onTick(elapsed_ms);
+
+  // Scratch lives in PSRAM — MapContext (~24KB) must not sit on the loop stack.
   if (g_map_ctx_poll->takeContext(*g_map_scratch)) {
     g_radar->bindMapContext(*g_map_scratch);
     Serial.println("map: bound");
