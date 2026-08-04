@@ -3,7 +3,7 @@
 **Date:** 2026-08-04  
 **Repo:** `/Users/bruceclingan/Projects/desktop-display-firmware`  
 **Branch:** `main` (ahead of `origin` — push when ready)  
-**HEAD:** `12668f0` — feat(radar): embed ADS-B demo fixture for Dial settings  
+**HEAD:** see `git log -1` on `main`  
 **Spec/plan (A done):** `docs/superpowers/specs/2026-08-03-dial-radar-port-design.md`, `docs/superpowers/plans/2026-08-03-dial-radar-port.md`  
 **Spec/plan (C shipped):** `docs/superpowers/specs/2026-08-04-dial-gesture-remap-design.md`, `docs/superpowers/plans/2026-08-04-dial-gesture-remap.md`  
 **Input target:** Dial firmware only — `src/sim/**` deprecated for input work (leave untouched)
@@ -28,7 +28,7 @@
 - Radar **path A + C complete:** Classic sweep, live adsb.lol + `/api/map/context`, Focused rotate = zoom; **double-tap** = Nav toggle; tap = select; long-press = settings + NVS + demo
 - Boot: `display: ready` → `nav: Focused Clock` (LVGL heap in PSRAM)
 
-## Known residual (not blocking path C)
+## Residual polish
 
 - Brief hitch when **map overlays rebuild** (first bind / zoom) — airspace/highway `lv_line` storm in `radar_lvgl`; separate from TLS stalls
 - Carousel Radar still polls map/ADS-B while highlighted (by design); async so it no longer reboots

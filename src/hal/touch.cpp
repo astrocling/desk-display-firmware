@@ -90,8 +90,7 @@ bool touchPoll(desk_display::TouchGesture& out) {
   int16_t x = 0;
   int16_t y = 0;
   if (!readTouchSample(down, x, y)) {
-    // Still advance detector time with last known up so pending Tap can flush
-    out = s_gest.update(false, 0, 0, millis());
+    out = s_gest.tick(millis());
     return out.kind != desk_display::TouchGestureKind::None;
   }
   out = s_gest.update(down, x, y, millis());

@@ -12,7 +12,7 @@ bool dialShellInit();
 /** Encoder ticks (positive = next in carousel / timezone scrub when focused). */
 void dialShellOnRotate(int8_t delta);
 
-/** Touch gestures — Nav, settings, Task 4 stubs. */
+/** Touch gestures — DoubleTap → Nav; Tap/LongPress → Focused Radar select/settings. */
 void dialShellOnTouch(const desk_display::TouchGesture& gesture);
 
 /**

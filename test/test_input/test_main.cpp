@@ -127,6 +127,44 @@ void test_touch_hold_too_long_for_tap_without_long(void) {
                         .kind);
 }
 
+void test_touch_tick_during_press_no_gesture(void) {
+  TouchGestureDetector d;
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.update(true, 10, 20, 1000).kind);
+  // I2C failure path: tick advances time without synthesizing finger-up
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.tick(1050).kind);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.tick(1100).kind);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.tick(1150).kind);
+  // Real release still arms a single tap (pending until gap elapses)
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.update(false, 10, 20, 1200).kind);
+  const auto tap = d.update(false, 10, 20, 1200 + kTouchDoubleGapMs);
+  TEST_ASSERT_EQUAL(TouchGestureKind::Tap, tap.kind);
+  TEST_ASSERT_EQUAL_INT16(10, tap.x);
+  TEST_ASSERT_EQUAL_INT16(20, tap.y);
+}
+
+void test_touch_false_up_mid_press_spurious_double_tap(void) {
+  // Old HAL bug: synthesizing update(false) during an active press arms pending
+  // tap; the real release then becomes DoubleTap.
+  TouchGestureDetector d;
+  d.update(true, 10, 20, 1000);
+  d.update(false, 10, 20, 1050);  // spurious up (e.g. I2C failure path)
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.update(true, 10, 20, 1100).kind);
+  const auto dbl = d.update(false, 10, 20, 1200);
+  TEST_ASSERT_EQUAL(TouchGestureKind::DoubleTap, dbl.kind);
+}
+
+void test_touch_tick_after_down_not_double_tap(void) {
+  TouchGestureDetector d;
+  d.update(true, 10, 20, 1000);
+  d.tick(1050);
+  d.tick(1100);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None, d.update(false, 10, 20, 1200).kind);
+  const auto tap = d.update(false, 10, 20, 1200 + kTouchDoubleGapMs);
+  TEST_ASSERT_EQUAL(TouchGestureKind::Tap, tap.kind);
+  TEST_ASSERT_EQUAL(TouchGestureKind::None,
+                    d.update(false, 10, 20, 1200 + kTouchDoubleGapMs + 50).kind);
+}
+
 void test_nav_status_strings(void) {
   TEST_ASSERT_EQUAL_STRING("CLOCK", screenTitleUpper(Screen::Clock));
   TEST_ASSERT_EQUAL_STRING("WEATHER", screenTitleUpper(Screen::Weather));
@@ -158,6 +196,9 @@ int main(int, char**) {
   RUN_TEST(test_touch_double_tap);
   RUN_TEST(test_touch_long_press);
   RUN_TEST(test_touch_hold_too_long_for_tap_without_long);
+  RUN_TEST(test_touch_tick_during_press_no_gesture);
+  RUN_TEST(test_touch_false_up_mid_press_spurious_double_tap);
+  RUN_TEST(test_touch_tick_after_down_not_double_tap);
   RUN_TEST(test_nav_status_strings);
   return UNITY_END();
 }

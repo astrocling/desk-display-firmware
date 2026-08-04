@@ -16,15 +16,19 @@ void TouchGestureDetector::reset() {
   refractory_until_ms_ = 0;
 }
 
-TouchGesture TouchGestureDetector::update(bool down, int16_t x, int16_t y,
-                                          uint32_t now_ms) {
+TouchGesture TouchGestureDetector::tick(uint32_t now_ms) {
   TouchGesture out{};
-
   if (pending_tap_ && now_ms >= pending_deadline_ms_ && !down_) {
     pending_tap_ = false;
     out = {TouchGestureKind::Tap, pending_x_, pending_y_};
     refractory_until_ms_ = now_ms + kTouchRefractoryMs;
   }
+  return out;
+}
+
+TouchGesture TouchGestureDetector::update(bool down, int16_t x, int16_t y,
+                                          uint32_t now_ms) {
+  TouchGesture out = tick(now_ms);
 
   if (down) {
     if (!down_) {

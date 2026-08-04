@@ -20,6 +20,7 @@ The encoder has **no push button**. Shell events:
 | Event | Shell behavior |
 |-------|----------------|
 | `Rotate(delta)` | Carousel: cycle highlight. Focused: idle reset only (screen owns rotate). |
+| `CenterTap` | Carousel ↔ Focused toggle (`Nav::on_center_tap()`). Dial maps **DoubleTap** to this path; API retained for native tests. |
 | `DoubleTap` (Dial) | Knob-click substitute: Carousel → Focused on highlight; Focused → Carousel. (`Nav::on_center_tap()` still implements the toggle.) |
 | `Tap` / `LongPress` | Idle reset; Focused Radar owns select / settings (Dial). Carousel Tap ignored. |
 

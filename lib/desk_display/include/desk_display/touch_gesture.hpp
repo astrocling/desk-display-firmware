@@ -20,6 +20,8 @@ constexpr uint32_t kTouchRefractoryMs = 80;
 class TouchGestureDetector {
  public:
   void reset();
+  /** Advance time only — flush an expired pending Tap when not down. */
+  TouchGesture tick(uint32_t now_ms);
   TouchGesture update(bool down, int16_t x, int16_t y, uint32_t now_ms);
 
  private:
