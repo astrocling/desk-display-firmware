@@ -6,7 +6,7 @@
 
 namespace desk_ui {
 
-/** Build the weather screen (temp, icon, hourly strip, alert) under `parent`. */
+/** Build the weather screen (temp, icon, feels, alert) under `parent`. */
 void weather_lvgl_build(lv_obj_t* parent, const desk_display::WeatherScreenView& v);
 
 }  // namespace desk_ui

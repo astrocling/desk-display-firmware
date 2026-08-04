@@ -11,7 +11,7 @@ namespace {
 lv_color_t rgb(uint32_t c) {
   return lv_color_make(static_cast<uint8_t>((c >> 16) & 0xFF),
                        static_cast<uint8_t>((c >> 8) & 0xFF),
-                       static_cast<uint8_t>(c & 0xFF));
+                       static_cast<uint8_t>((c >> 0) & 0xFF));
 }
 
 }  // namespace
@@ -24,6 +24,18 @@ void weather_lvgl_build(lv_obj_t* parent, const desk_display::WeatherScreenView&
     return;
   }
 
+  // Circular bezel inset ≈ inscribed-square margin: (D - D/√2)/2 ≈ 0.1464*D
+  // (same idea as radar_lvgl kSettingsRingInset = 52 on a 360 disc).
+  const lv_coord_t pw = lv_obj_get_content_width(parent);
+  const lv_coord_t ph = lv_obj_get_content_height(parent);
+  const lv_coord_t side = (pw < ph) ? pw : ph;
+  lv_coord_t inset = static_cast<lv_coord_t>((side * 1464) / 10000);
+  if (inset < 24) {
+    inset = 24;
+  }
+  const lv_coord_t content_w = side - (inset * 2);
+  const lv_coord_t alert_w = (content_w > 40) ? (content_w - 8) : content_w;
+
   char hl[48];
   std::snprintf(hl, sizeof(hl), "H %.0f  L %.0f", static_cast<double>(v.todayHigh),
                 static_cast<double>(v.todayLow));
@@ -31,16 +43,16 @@ void weather_lvgl_build(lv_obj_t* parent, const desk_display::WeatherScreenView&
   lv_label_set_text(hl_lab, hl);
   lv_obj_set_style_text_color(hl_lab, rgb(desk_display::theme::kAccent), 0);
   lv_obj_set_style_text_font(hl_lab, &lv_font_montserrat_12, 0);
-  lv_obj_align(hl_lab, LV_ALIGN_TOP_MID, 0, 4);
+  lv_obj_align(hl_lab, LV_ALIGN_TOP_MID, 0, inset);
 
   lv_obj_t* when = lv_label_create(parent);
   lv_label_set_text(when, v.whenLabel);
   lv_obj_set_style_text_color(when, rgb(desk_display::theme::kDim), 0);
   lv_obj_set_style_text_font(when, &lv_font_montserrat_12, 0);
-  lv_obj_align(when, LV_ALIGN_CENTER, 0, -70);
+  lv_obj_align(when, LV_ALIGN_CENTER, 0, -56);
 
   lv_obj_t* row = lv_obj_create(parent);
-  lv_obj_set_size(row, 200, 48);
+  lv_obj_set_size(row, content_w > 200 ? 200 : content_w, 48);
   lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(row, 0, 0);
   lv_obj_set_style_pad_all(row, 0, 0);
@@ -49,7 +61,7 @@ void weather_lvgl_build(lv_obj_t* parent, const desk_display::WeatherScreenView&
   lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(row, 8, 0);
-  lv_obj_align(row, LV_ALIGN_CENTER, 0, -28);
+  lv_obj_align(row, LV_ALIGN_CENTER, 0, -12);
 
   lv_obj_t* icon = lv_img_create(row);
   lv_img_set_src(icon, weatherIconImg(v.icon));
@@ -68,7 +80,7 @@ void weather_lvgl_build(lv_obj_t* parent, const desk_display::WeatherScreenView&
   lv_label_set_text(feels, feels_buf);
   lv_obj_set_style_text_color(feels, rgb(desk_display::theme::kDim), 0);
   lv_obj_set_style_text_font(feels, &lv_font_montserrat_12, 0);
-  lv_obj_align(feels, LV_ALIGN_CENTER, 0, 10);
+  lv_obj_align(feels, LV_ALIGN_CENTER, 0, 28);
 
   if (v.alertBadge) {
     lv_obj_t* alert = lv_label_create(parent);
@@ -76,58 +88,13 @@ void weather_lvgl_build(lv_obj_t* parent, const desk_display::WeatherScreenView&
                       v.alertDetailOpen && v.alertHeadline ? v.alertHeadline : "ALERT");
     lv_obj_set_style_text_color(alert, rgb(desk_display::theme::kAlert), 0);
     lv_obj_set_style_text_font(alert, &lv_font_montserrat_12, 0);
-    lv_obj_align(alert, LV_ALIGN_CENTER, 0, 36);
+    lv_obj_set_width(alert, alert_w);
+    lv_label_set_long_mode(alert, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(alert, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(alert, LV_ALIGN_CENTER, 0, 52);
   }
 
-  lv_obj_t* strip = lv_obj_create(parent);
-  lv_obj_set_size(strip, 280, 70);
-  lv_obj_set_style_bg_opa(strip, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(strip, 0, 0);
-  lv_obj_set_style_pad_all(strip, 0, 0);
-  lv_obj_clear_flag(strip, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                        LV_FLEX_ALIGN_CENTER);
-  lv_obj_align(strip, LV_ALIGN_BOTTOM_MID, 0, -4);
-
-  for (std::size_t i = 0; i < v.stripCount; ++i) {
-    const auto& slot = v.strip[i];
-    if (!slot.valid) {
-      continue;
-    }
-    lv_obj_t* cell = lv_obj_create(strip);
-    lv_obj_set_size(cell, 48, 66);
-    lv_obj_set_style_radius(cell, 6, 0);
-    lv_obj_set_style_border_width(cell, 0, 0);
-    lv_obj_set_style_pad_all(cell, 2, 0);
-    lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
-    if (slot.selected) {
-      lv_obj_set_style_bg_color(cell, rgb(desk_display::theme::kAccent), 0);
-      lv_obj_set_style_bg_opa(cell, LV_OPA_30, 0);
-    } else {
-      lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
-    }
-    lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(cell, 2, 0);
-
-    lv_obj_t* simg = lv_img_create(cell);
-    lv_img_set_src(simg, weatherIconImg(slot.icon));
-    lv_img_set_zoom(simg, 102);  // ~16px from 40px (256 = 100%)
-
-    lv_obj_t* hour_lab = lv_label_create(cell);
-    lv_label_set_text(hour_lab, slot.hourDigit);
-    lv_obj_set_style_text_font(hour_lab, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(hour_lab, rgb(desk_display::theme::kDim), 0);
-
-    char st[16];
-    std::snprintf(st, sizeof(st), "%.0f°", static_cast<double>(slot.temp));
-    lv_obj_t* stemp = lv_label_create(cell);
-    lv_label_set_text(stemp, st);
-    lv_obj_set_style_text_font(stemp, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(stemp, rgb(0xFFFFFF), 0);
-  }
+  // No hourly strip — scrub feedback is whenLabel + center icon/temp.
 }
 
 }  // namespace desk_ui
