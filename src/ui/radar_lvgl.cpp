@@ -122,14 +122,12 @@ bool show_vectors(float rangeMiles) {
 }
 
 // LVGL line objects keep a pointer to caller-owned point storage for their
-// lifetime; static buffers sized for the worst case are safe while a single
-// disc is alive (torn down on full rebuild).
+// lifetime; sweep/trail buffers are disc-global, blip vectors/leaders live in
+// per-callsign traffic slots so index compaction cannot retarget another line.
 lv_point_t g_sweep_points[2];
 lv_point_t g_trail_points[kTrailSlices][2];
-lv_point_t g_vector_points[kMaxDots][2];
-lv_point_t g_leader_points[kMaxDots][2];
 
-/** Absolute display-pixel hit targets written during the last build_traffic. */
+/** Absolute display-pixel hit targets written during the last traffic sync. */
 struct BlipHitTarget {
   bool valid;
   bool hasTag;
@@ -142,10 +140,103 @@ struct BlipHitTarget {
 };
 BlipHitTarget g_hit_targets[kMaxDots];
 
+/**
+ * One LVGL subtree per painted callsign. Geometry/text updates happen in
+ * place; delete+recreate only when the widget *layout* changes (selection,
+ * declutter, vectors↔dots, track line presence).
+ */
+struct TrafficSlot {
+  bool active;
+  bool keep;
+  char callsign[desk_display::kMaxCallsign];
+  uint32_t layout_sig;
+  uint32_t content_sig;
+  lv_obj_t* root;
+  lv_obj_t* mark;
+  lv_obj_t* vector;
+  lv_obj_t* leader;
+  lv_obj_t* tag1;
+  lv_obj_t* tag2;
+  lv_obj_t* tag3;
+  lv_obj_t* tag4;
+  lv_point_t vector_pts[2];
+  lv_point_t leader_pts[2];
+};
+TrafficSlot g_traffic_slots[kMaxDots];
+
+/** Blips-layer origin in absolute pixels — disc does not move during Classic. */
+bool g_blips_origin_valid = false;
+float g_blips_origin_x = 0.0f;
+float g_blips_origin_y = 0.0f;
+
 void clear_hit_targets() {
   for (int i = 0; i < kMaxDots; ++i) {
     g_hit_targets[i].valid = false;
   }
+}
+
+void forget_traffic_slot(TrafficSlot& slot, bool deleteRoot) {
+  if (deleteRoot && slot.root != nullptr) {
+    lv_obj_del(slot.root);
+  }
+  slot.active = false;
+  slot.keep = false;
+  slot.callsign[0] = '\0';
+  slot.layout_sig = 0;
+  slot.content_sig = 0;
+  slot.root = nullptr;
+  slot.mark = nullptr;
+  slot.vector = nullptr;
+  slot.leader = nullptr;
+  slot.tag1 = nullptr;
+  slot.tag2 = nullptr;
+  slot.tag3 = nullptr;
+  slot.tag4 = nullptr;
+}
+
+void clear_traffic_slots(bool deleteRoots) {
+  for (int i = 0; i < kMaxDots; ++i) {
+    forget_traffic_slot(g_traffic_slots[i], deleteRoots);
+  }
+  g_blips_origin_valid = false;
+}
+
+TrafficSlot* find_traffic_slot(const char* callsign) {
+  if (callsign == nullptr || callsign[0] == '\0') {
+    return nullptr;
+  }
+  for (int i = 0; i < kMaxDots; ++i) {
+    if (g_traffic_slots[i].active &&
+        std::strcmp(g_traffic_slots[i].callsign, callsign) == 0) {
+      return &g_traffic_slots[i];
+    }
+  }
+  return nullptr;
+}
+
+TrafficSlot* alloc_traffic_slot() {
+  for (int i = 0; i < kMaxDots; ++i) {
+    if (!g_traffic_slots[i].active) {
+      return &g_traffic_slots[i];
+    }
+  }
+  return nullptr;
+}
+
+bool refresh_blips_origin(lv_obj_t* layer) {
+  if (g_blips_origin_valid) {
+    return true;
+  }
+  if (!layer) {
+    return false;
+  }
+  lv_obj_update_layout(layer);
+  lv_area_t layerArea{};
+  lv_obj_get_coords(layer, &layerArea);
+  g_blips_origin_x = static_cast<float>(layerArea.x1);
+  g_blips_origin_y = static_cast<float>(layerArea.y1);
+  g_blips_origin_valid = true;
+  return true;
 }
 
 void clear_settings_hits() {
@@ -970,14 +1061,9 @@ void build_sweep(lv_obj_t* disc, float sweepAngleDeg) {
   apply_trail_geometry(sweepAngleDeg);
 }
 
-void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
-                   const char* tagLine2, const char* tagLine3, const char* tagLine4,
-                   uint32_t callsignColor, bool selected, bool drawCallsign,
-                   bool drawLine2, lv_coord_t bx, lv_coord_t by) {
-  // Place the tag toward disc center when the blip is near the rim so the
-  // round clip doesn't swallow callsign / alt / type lines.
+void tag_leader_offset(lv_coord_t bx, lv_coord_t by, bool selected, bool hasLine4,
+                       lv_coord_t* outDx, lv_coord_t* outDy) {
   constexpr lv_coord_t kLeaderLen = 18;
-  const bool hasLine4 = selected && tagLine4 && tagLine4[0] != '\0';
   const lv_coord_t kTagMargin = hasLine4 ? 60 : (selected ? 48 : 36);
   const lv_coord_t cx = g_disc_px / 2;
   const lv_coord_t cy = g_disc_px / 2;
@@ -987,93 +1073,465 @@ void draw_blip_tag(lv_obj_t* layer, std::size_t blipIndex, const char* callsign,
   lv_coord_t leaderDx = 16;
   lv_coord_t leaderDy = -16;
   if (dist > 1.0f) {
-    const bool nearRim =
-        bx < kTagMargin || by < kTagMargin ||
-        bx > g_disc_px - kTagMargin || by > g_disc_px - kTagMargin;
+    const bool nearRim = bx < kTagMargin || by < kTagMargin ||
+                         bx > g_disc_px - kTagMargin ||
+                         by > g_disc_px - kTagMargin;
     if (nearRim) {
       leaderDx = static_cast<lv_coord_t>((dx / dist) * kLeaderLen);
       leaderDy = static_cast<lv_coord_t>((dy / dist) * kLeaderLen);
     }
   }
-  const lv_coord_t tagX = bx + leaderDx;
-  const lv_coord_t tagY = by + leaderDy;
-  const lv_opa_t opa = selected ? LV_OPA_COVER : kTagDimOpa;
-  // Selected: callsign above line2; unselected dense: same. Line3 below line2.
-  const lv_coord_t line1Y = tagY - 12;
-  const lv_coord_t line2Y = tagY;
-  const lv_coord_t line3Y = tagY + 12;
-  const lv_coord_t line4Y = tagY + 24;
+  *outDx = leaderDx;
+  *outDy = leaderDy;
+}
 
-  g_leader_points[blipIndex][0] = {bx, by};
-  g_leader_points[blipIndex][1] = {tagX, tagY};
-
-  lv_obj_t* leader = lv_line_create(layer);
-  lv_obj_set_pos(leader, 0, 0);
-  lv_line_set_points(leader, g_leader_points[blipIndex], 2);
-  lv_obj_set_style_line_width(leader, selected ? 2 : 1, 0);
-  lv_obj_set_style_line_color(leader, rgb(kLeaderColor), 0);
-  lv_obj_set_style_line_opa(leader, opa, 0);
-  lv_obj_set_style_line_rounded(leader, false, 0);
-  lv_obj_clear_flag(leader, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_clear_flag(leader, LV_OBJ_FLAG_SCROLLABLE);
-
-  if (drawCallsign) {
-    lv_obj_t* tag = lv_label_create(layer);
-    lv_label_set_text(tag, (callsign && callsign[0]) ? callsign : "?");
-    lv_obj_set_style_text_font(tag, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(tag, rgb(callsignColor), 0);
-    lv_obj_set_style_text_opa(tag, opa, 0);
-    lv_obj_set_pos(tag, tagX, line1Y);
+void compute_tag_lines(const desk_display::RadarView& v, std::size_t i,
+                       bool selected, desk_display::RadarUnselectedLabel label,
+                       char* tagLine2, std::size_t tagLine2Len, char* tagLine3,
+                       std::size_t tagLine3Len, char* tagLine4,
+                       std::size_t tagLine4Len) {
+  const desk_display::RadarBlip& b = v.blips[i];
+  tagLine2[0] = '\0';
+  tagLine3[0] = '\0';
+  tagLine4[0] = '\0';
+  if (selected) {
+    desk_display::formatRadarTagLine2(tagLine2, tagLine2Len, b.aircraft,
+                                      desk_display::RadarTagStyle::Full);
+    desk_display::formatRadarTagLine3(tagLine3, tagLine3Len, b.aircraft.type,
+                                      b.aircraft.squawk, b.notable);
+    desk_display::formatRadarTagLine4(tagLine4, tagLine4Len, nullptr);
+  } else if (label == desk_display::RadarUnselectedLabel::DenseTag) {
+    desk_display::formatRadarTagLine2(tagLine2, tagLine2Len, b.aircraft,
+                                      desk_display::RadarTagStyle::Dense);
   }
+}
 
-  if (drawLine2 && tagLine2 && tagLine2[0] != '\0') {
-    lv_obj_t* tag2 = lv_label_create(layer);
-    lv_label_set_text(tag2, tagLine2);
-    lv_obj_set_style_text_font(tag2, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(tag2, rgb(desk_display::theme::kAccent), 0);
-    lv_obj_set_style_text_opa(tag2, opa, 0);
-    lv_obj_set_pos(tag2, tagX, line2Y);
+uint32_t blip_mark_color(const desk_display::RadarBlip& b, bool selected) {
+  if (selected) {
+    return kSelectedColor;
   }
-
-  if (selected && tagLine3 && tagLine3[0] != '\0') {
-    lv_obj_t* tag3 = lv_label_create(layer);
-    lv_label_set_text(tag3, tagLine3);
-    lv_obj_set_style_text_font(tag3, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(tag3, rgb(desk_display::theme::kAccent), 0);
-    lv_obj_set_style_text_opa(tag3, opa, 0);
-    lv_obj_set_pos(tag3, tagX, line3Y);
-  }
-
-  if (hasLine4) {
-    lv_obj_t* tag4 = lv_label_create(layer);
-    lv_label_set_text(tag4, tagLine4);
-    lv_obj_set_style_text_font(tag4, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_color(tag4, rgb(desk_display::theme::kAccent), 0);
-    lv_obj_set_style_text_opa(tag4, opa, 0);
-    lv_obj_set_pos(tag4, tagX, line4Y);
+  switch (b.notable) {
+    case desk_display::AircraftNotable::Emergency:
+      return desk_display::theme::kAlert;
+    case desk_display::AircraftNotable::Military:
+      return desk_display::theme::kMilitary;
+    case desk_display::AircraftNotable::Interesting:
+      return desk_display::theme::kAccent;
+    case desk_display::AircraftNotable::None:
+    default:
+      return kDotColor;
   }
 }
 
 /**
- * Traffic layer: ≤25 mi → stars + vectors + declutter-aware tags;
- * above that → dense dots only (still selectable). Unselected label density
- * follows settings; selected always gets the full tag (incl. line4 when set).
+ * Structural fingerprint — recreate widgets only when this changes.
+ * Position / track / alt / speed values are updated in place.
  */
-void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
-  clear_hit_targets();
+uint32_t blip_layout_sig(const desk_display::RadarView& v, std::size_t i,
+                         bool vectors) {
+  const desk_display::RadarBlip& b = v.blips[i];
+  const bool selected = v.hasSelection && v.selectedIndex == i;
+  using desk_display::RadarUnselectedLabel;
+  const auto label =
+      selected ? RadarUnselectedLabel::DenseTag
+               : desk_display::radarUnselectedLabel(v.settings.declutter);
+  const bool drawTag =
+      vectors && (selected || label != RadarUnselectedLabel::None);
+  const bool drawL2 = selected || label == RadarUnselectedLabel::DenseTag;
 
-  lv_area_t layerArea{};
-  lv_obj_update_layout(layer);
-  lv_obj_get_coords(layer, &layerArea);
-  const float originX = static_cast<float>(layerArea.x1);
-  const float originY = static_cast<float>(layerArea.y1);
+  uint32_t h = 2166136261u;
+  mix_u32(h, selected ? 1u : 0u);
+  mix_u32(h, vectors ? 1u : 0u);
+  mix_u32(h, static_cast<uint32_t>(v.settings.declutter));
+  mix_u32(h, static_cast<uint32_t>(b.notable));
+  mix_u32(h, (vectors && b.aircraft.hasTrack) ? 1u : 0u);
+  mix_u32(h, drawTag ? 1u : 0u);
+  mix_u32(h, drawL2 ? 1u : 0u);
+  mix_u32(h, (selected && drawTag) ? 1u : 0u);  // line3 present when selected+tag
+  return h;
+}
 
+/** Geometry/text fingerprint — cheap in-place update when only this changes. */
+uint32_t blip_content_sig(const desk_display::RadarView& v, std::size_t i,
+                          bool vectors) {
+  const desk_display::RadarBlip& b = v.blips[i];
+  const bool selected = v.hasSelection && v.selectedIndex == i;
+  uint32_t h = 2166136261u;
+  mix_u32(h, static_cast<uint32_t>(
+                 static_cast<int32_t>(b.offsetXMi * 50.0f) + 500000));
+  mix_u32(h, static_cast<uint32_t>(
+                 static_cast<int32_t>(b.offsetYMi * 50.0f) + 500000));
+  if (b.aircraft.hasTrack) {
+    mix_u32(h, static_cast<uint32_t>(b.aircraft.trackDeg));
+  }
+  if (b.aircraft.hasSpeed) {
+    mix_u32(h, static_cast<uint32_t>(b.aircraft.speedKt));
+  }
+  if (b.aircraft.hasAlt) {
+    mix_u32(h, static_cast<uint32_t>(b.aircraft.altFt));
+  }
+  if (!vectors && !selected) {
+    mix_u32(h, b.litAgeMs / 500u);
+  }
+  return h;
+}
+
+void fill_blip_hit(BlipHitTarget& hit, float originX, float originY,
+                   lv_coord_t bx, lv_coord_t by, bool selected, bool drawL2,
+                   bool hasLine4) {
+  hit.valid = true;
+  hit.markX = originX + static_cast<float>(bx);
+  hit.markY = originY + static_cast<float>(by);
+  hit.hasTag = false;
+
+  if (!drawL2 && !selected) {
+    return;
+  }
+
+  lv_coord_t leaderDx = 16;
+  lv_coord_t leaderDy = -16;
+  tag_leader_offset(bx, by, selected, hasLine4, &leaderDx, &leaderDy);
+  const lv_coord_t tagX = bx + leaderDx;
+  const lv_coord_t tagY = by + leaderDy;
+  const lv_coord_t line1Y = tagY - 12;
+  lv_coord_t tagBottomY = tagY;
+  if (selected) {
+    tagBottomY = hasLine4 ? static_cast<lv_coord_t>(tagY + 24 + 12)
+                          : static_cast<lv_coord_t>(tagY + 12 + 12);
+  } else if (drawL2) {
+    tagBottomY = tagY + 12;
+  }
+  hit.hasTag = true;
+  hit.tagX0 = originX + static_cast<float>(tagX);
+  hit.tagY0 = originY + static_cast<float>(line1Y);
+  hit.tagX1 = hit.tagX0 + 72.0f;
+  hit.tagY1 = originY + static_cast<float>(tagBottomY);
+}
+
+lv_obj_t* make_blip_root(lv_obj_t* layer) {
+  lv_obj_t* root = lv_obj_create(layer);
+  if (!root) {
+    return nullptr;
+  }
+  lv_obj_set_size(root, g_disc_px, g_disc_px);
+  lv_obj_set_pos(root, 0, 0);
+  lv_obj_set_style_bg_opa(root, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(root, 0, 0);
+  lv_obj_set_style_pad_all(root, 0, 0);
+  lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(root, LV_OBJ_FLAG_CLICKABLE);
+  return root;
+}
+
+void blip_screen_xy(const desk_display::RadarBlip& b, float scale, lv_coord_t* x,
+                    lv_coord_t* y, lv_coord_t* bx, lv_coord_t* by) {
+  const lv_coord_t cx = g_disc_px / 2;
+  const lv_coord_t cy = g_disc_px / 2;
+  *x = static_cast<lv_coord_t>(b.offsetXMi * scale);
+  *y = static_cast<lv_coord_t>(-b.offsetYMi * scale);
+  *bx = cx + *x;
+  *by = cy + *y;
+}
+
+void write_vector_pts(TrafficSlot& slot, const desk_display::RadarBlip& b,
+                      lv_coord_t bx, lv_coord_t by) {
+  const float rad = b.aircraft.trackDeg * kPi / 180.0f;
+  const float len = b.aircraft.hasSpeed
+                         ? clampf(b.aircraft.speedKt * kVectorLenScale,
+                                  kVectorLenMinPx, kVectorLenMaxPx)
+                         : kVectorLenDefaultPx;
+  const float dx = std::sin(rad) * len;
+  const float dy = -std::cos(rad) * len;
+  slot.vector_pts[0] = {bx, by};
+  slot.vector_pts[1] = {static_cast<lv_coord_t>(bx + dx),
+                        static_cast<lv_coord_t>(by + dy)};
+}
+
+void write_leader_pts(TrafficSlot& slot, lv_coord_t bx, lv_coord_t by,
+                      bool selected, bool hasLine4, lv_coord_t* tagX,
+                      lv_coord_t* tagY) {
+  lv_coord_t leaderDx = 16;
+  lv_coord_t leaderDy = -16;
+  tag_leader_offset(bx, by, selected, hasLine4, &leaderDx, &leaderDy);
+  *tagX = bx + leaderDx;
+  *tagY = by + leaderDy;
+  slot.leader_pts[0] = {bx, by};
+  slot.leader_pts[1] = {*tagX, *tagY};
+}
+
+void create_blip_widgets(TrafficSlot& slot, const desk_display::RadarView& v,
+                         std::size_t i, float originX, float originY,
+                         bool vectors) {
+  const desk_display::RadarBlip& b = v.blips[i];
+  const bool selected = v.hasSelection && v.selectedIndex == i;
   const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
+  lv_coord_t x = 0;
+  lv_coord_t y = 0;
+  lv_coord_t bx = 0;
+  lv_coord_t by = 0;
+  blip_screen_xy(b, scale, &x, &y, &bx, &by);
+  const uint32_t markColor = blip_mark_color(b, selected);
+  lv_obj_t* layer = slot.root;
+
+  using desk_display::RadarUnselectedLabel;
+  const auto label =
+      selected ? RadarUnselectedLabel::DenseTag
+               : desk_display::radarUnselectedLabel(v.settings.declutter);
+  const bool drawL2 = selected || label == RadarUnselectedLabel::DenseTag;
+  const bool drawTag =
+      vectors && (selected || label != RadarUnselectedLabel::None);
+
+  char tagLine2[24]{};
+  char tagLine3[28]{};
+  char tagLine4[8]{};
+  compute_tag_lines(v, i, selected, label, tagLine2, sizeof(tagLine2), tagLine3,
+                    sizeof(tagLine3), tagLine4, sizeof(tagLine4));
+  const bool hasLine4 = selected && tagLine4[0] != '\0';
+  fill_blip_hit(g_hit_targets[i], originX, originY, bx, by, selected,
+                drawTag && (selected || drawL2), hasLine4);
+  if (!drawTag) {
+    g_hit_targets[i].hasTag = false;
+  }
+
+  slot.mark = nullptr;
+  slot.vector = nullptr;
+  slot.leader = nullptr;
+  slot.tag1 = nullptr;
+  slot.tag2 = nullptr;
+  slot.tag3 = nullptr;
+  slot.tag4 = nullptr;
+
+  if (vectors) {
+    slot.mark = lv_label_create(layer);
+    lv_label_set_text(slot.mark, "*");
+    lv_obj_set_style_text_font(slot.mark, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(slot.mark, rgb(markColor), 0);
+    lv_obj_clear_flag(slot.mark, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(slot.mark, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_align(slot.mark, LV_ALIGN_CENTER, x, y);
+
+    if (b.aircraft.hasTrack) {
+      write_vector_pts(slot, b, bx, by);
+      slot.vector = lv_line_create(layer);
+      lv_obj_set_pos(slot.vector, 0, 0);
+      lv_line_set_points(slot.vector, slot.vector_pts, 2);
+      lv_obj_set_style_line_width(slot.vector, selected ? 2 : 1, 0);
+      lv_obj_set_style_line_color(slot.vector, rgb(markColor), 0);
+      lv_obj_set_style_line_rounded(slot.vector, false, 0);
+      lv_obj_clear_flag(slot.vector, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_clear_flag(slot.vector, LV_OBJ_FLAG_SCROLLABLE);
+    }
+
+    if (drawTag) {
+      const lv_opa_t opa = selected ? LV_OPA_COVER : kTagDimOpa;
+      lv_coord_t tagX = 0;
+      lv_coord_t tagY = 0;
+      write_leader_pts(slot, bx, by, selected, hasLine4, &tagX, &tagY);
+
+      slot.leader = lv_line_create(layer);
+      lv_obj_set_pos(slot.leader, 0, 0);
+      lv_line_set_points(slot.leader, slot.leader_pts, 2);
+      lv_obj_set_style_line_width(slot.leader, selected ? 2 : 1, 0);
+      lv_obj_set_style_line_color(slot.leader, rgb(kLeaderColor), 0);
+      lv_obj_set_style_line_opa(slot.leader, opa, 0);
+      lv_obj_set_style_line_rounded(slot.leader, false, 0);
+      lv_obj_clear_flag(slot.leader, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_clear_flag(slot.leader, LV_OBJ_FLAG_SCROLLABLE);
+
+      slot.tag1 = lv_label_create(layer);
+      lv_label_set_text(slot.tag1,
+                        b.aircraft.callsign[0] ? b.aircraft.callsign : "?");
+      lv_obj_set_style_text_font(slot.tag1, &lv_font_montserrat_10, 0);
+      lv_obj_set_style_text_color(slot.tag1, rgb(markColor), 0);
+      lv_obj_set_style_text_opa(slot.tag1, opa, 0);
+      lv_obj_set_pos(slot.tag1, tagX, tagY - 12);
+
+      if (drawL2 && tagLine2[0] != '\0') {
+        slot.tag2 = lv_label_create(layer);
+        lv_label_set_text(slot.tag2, tagLine2);
+        lv_obj_set_style_text_font(slot.tag2, &lv_font_montserrat_10, 0);
+        lv_obj_set_style_text_color(slot.tag2, rgb(desk_display::theme::kAccent),
+                                    0);
+        lv_obj_set_style_text_opa(slot.tag2, opa, 0);
+        lv_obj_set_pos(slot.tag2, tagX, tagY);
+      }
+
+      if (selected && tagLine3[0] != '\0') {
+        slot.tag3 = lv_label_create(layer);
+        lv_label_set_text(slot.tag3, tagLine3);
+        lv_obj_set_style_text_font(slot.tag3, &lv_font_montserrat_10, 0);
+        lv_obj_set_style_text_color(slot.tag3, rgb(desk_display::theme::kAccent),
+                                    0);
+        lv_obj_set_style_text_opa(slot.tag3, opa, 0);
+        lv_obj_set_pos(slot.tag3, tagX, tagY + 12);
+      }
+
+      if (hasLine4) {
+        slot.tag4 = lv_label_create(layer);
+        lv_label_set_text(slot.tag4, tagLine4);
+        lv_obj_set_style_text_font(slot.tag4, &lv_font_montserrat_10, 0);
+        lv_obj_set_style_text_color(slot.tag4, rgb(desk_display::theme::kAccent),
+                                    0);
+        lv_obj_set_style_text_opa(slot.tag4, opa, 0);
+        lv_obj_set_pos(slot.tag4, tagX, tagY + 24);
+      }
+    }
+    return;
+  }
+
+  const float ageFrac = static_cast<float>(b.litAgeMs) /
+                        static_cast<float>(desk_display::kRadarBlipFadeMs);
+  const float alpha = selected ? 1.0f : (1.0f - ageFrac * 0.88f);
+  const lv_opa_t opa = static_cast<lv_opa_t>(
+      clampf(alpha * 255.0f, selected ? 255.0f : 20.0f, 255.0f));
+
+  lv_coord_t dotPx = kDotPx;
+  if (selected || b.notable == desk_display::AircraftNotable::Emergency) {
+    dotPx = kDotPx + 2;
+  }
+
+  slot.mark = lv_obj_create(layer);
+  lv_obj_set_size(slot.mark, dotPx, dotPx);
+  lv_obj_set_style_radius(slot.mark, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(slot.mark, rgb(markColor), 0);
+  lv_obj_set_style_bg_opa(slot.mark, opa, 0);
+  lv_obj_set_style_border_width(slot.mark, selected ? 1 : 0, 0);
+  lv_obj_set_style_border_color(slot.mark, rgb(kSelectedColor), 0);
+  lv_obj_set_style_pad_all(slot.mark, 0, 0);
+  lv_obj_clear_flag(slot.mark, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(slot.mark, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_align(slot.mark, LV_ALIGN_CENTER, x, y);
+}
+
+/** Move/restyle existing widgets — no create/delete (paint path). */
+void update_blip_widgets(TrafficSlot& slot, const desk_display::RadarView& v,
+                         std::size_t i, float originX, float originY,
+                         bool vectors) {
+  const desk_display::RadarBlip& b = v.blips[i];
+  const bool selected = v.hasSelection && v.selectedIndex == i;
+  const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
+  lv_coord_t x = 0;
+  lv_coord_t y = 0;
+  lv_coord_t bx = 0;
+  lv_coord_t by = 0;
+  blip_screen_xy(b, scale, &x, &y, &bx, &by);
+  const uint32_t markColor = blip_mark_color(b, selected);
+
+  using desk_display::RadarUnselectedLabel;
+  const auto label =
+      selected ? RadarUnselectedLabel::DenseTag
+               : desk_display::radarUnselectedLabel(v.settings.declutter);
+  const bool drawL2 = selected || label == RadarUnselectedLabel::DenseTag;
+  const bool drawTag =
+      vectors && (selected || label != RadarUnselectedLabel::None);
+
+  char tagLine2[24]{};
+  char tagLine3[28]{};
+  char tagLine4[8]{};
+  compute_tag_lines(v, i, selected, label, tagLine2, sizeof(tagLine2), tagLine3,
+                    sizeof(tagLine3), tagLine4, sizeof(tagLine4));
+  const bool hasLine4 = selected && tagLine4[0] != '\0';
+  fill_blip_hit(g_hit_targets[i], originX, originY, bx, by, selected,
+                drawTag && (selected || drawL2), hasLine4);
+  if (!drawTag) {
+    g_hit_targets[i].hasTag = false;
+  }
+
+  if (vectors) {
+    if (slot.mark) {
+      lv_obj_set_style_text_color(slot.mark, rgb(markColor), 0);
+      lv_obj_align(slot.mark, LV_ALIGN_CENTER, x, y);
+    }
+    if (slot.vector && b.aircraft.hasTrack) {
+      write_vector_pts(slot, b, bx, by);
+      lv_line_set_points(slot.vector, slot.vector_pts, 2);
+      lv_obj_set_style_line_width(slot.vector, selected ? 2 : 1, 0);
+      lv_obj_set_style_line_color(slot.vector, rgb(markColor), 0);
+      lv_obj_invalidate(slot.vector);
+    }
+    if (drawTag && slot.leader) {
+      const lv_opa_t opa = selected ? LV_OPA_COVER : kTagDimOpa;
+      lv_coord_t tagX = 0;
+      lv_coord_t tagY = 0;
+      write_leader_pts(slot, bx, by, selected, hasLine4, &tagX, &tagY);
+      lv_line_set_points(slot.leader, slot.leader_pts, 2);
+      lv_obj_set_style_line_width(slot.leader, selected ? 2 : 1, 0);
+      lv_obj_set_style_line_opa(slot.leader, opa, 0);
+      lv_obj_invalidate(slot.leader);
+
+      if (slot.tag1) {
+        lv_label_set_text(slot.tag1,
+                          b.aircraft.callsign[0] ? b.aircraft.callsign : "?");
+        lv_obj_set_style_text_color(slot.tag1, rgb(markColor), 0);
+        lv_obj_set_style_text_opa(slot.tag1, opa, 0);
+        lv_obj_set_pos(slot.tag1, tagX, tagY - 12);
+      }
+      if (slot.tag2) {
+        if (tagLine2[0] != '\0') {
+          lv_label_set_text(slot.tag2, tagLine2);
+        }
+        lv_obj_set_style_text_opa(slot.tag2, opa, 0);
+        lv_obj_set_pos(slot.tag2, tagX, tagY);
+      }
+      if (slot.tag3) {
+        if (tagLine3[0] != '\0') {
+          lv_label_set_text(slot.tag3, tagLine3);
+        }
+        lv_obj_set_style_text_opa(slot.tag3, opa, 0);
+        lv_obj_set_pos(slot.tag3, tagX, tagY + 12);
+      }
+      if (slot.tag4) {
+        if (tagLine4[0] != '\0') {
+          lv_label_set_text(slot.tag4, tagLine4);
+        }
+        lv_obj_set_style_text_opa(slot.tag4, opa, 0);
+        lv_obj_set_pos(slot.tag4, tagX, tagY + 24);
+      }
+    }
+    return;
+  }
+
+  if (!slot.mark) {
+    return;
+  }
+  const float ageFrac = static_cast<float>(b.litAgeMs) /
+                        static_cast<float>(desk_display::kRadarBlipFadeMs);
+  const float alpha = selected ? 1.0f : (1.0f - ageFrac * 0.88f);
+  const lv_opa_t opa = static_cast<lv_opa_t>(
+      clampf(alpha * 255.0f, selected ? 255.0f : 20.0f, 255.0f));
+  lv_coord_t dotPx = kDotPx;
+  if (selected || b.notable == desk_display::AircraftNotable::Emergency) {
+    dotPx = kDotPx + 2;
+  }
+  lv_obj_set_size(slot.mark, dotPx, dotPx);
+  lv_obj_set_style_bg_color(slot.mark, rgb(markColor), 0);
+  lv_obj_set_style_bg_opa(slot.mark, opa, 0);
+  lv_obj_set_style_border_width(slot.mark, selected ? 1 : 0, 0);
+  lv_obj_align(slot.mark, LV_ALIGN_CENTER, x, y);
+}
+
+/**
+ * Traffic layer: ≤25 mi → stars + vectors + declutter-aware tags;
+ * above that → dense dots only (still selectable).
+ *
+ * Paint path updates existing widgets in place. Create/delete only when a
+ * callsign appears/vanishes or its widget layout changes.
+ */
+void sync_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
+  clear_hit_targets();
+  for (int i = 0; i < kMaxDots; ++i) {
+    g_traffic_slots[i].keep = false;
+  }
+
+  if (!refresh_blips_origin(layer)) {
+    return;
+  }
+  const float originX = g_blips_origin_x;
+  const float originY = g_blips_origin_y;
+
   const bool vectors = show_vectors(v.rangeMiles);
   const std::size_t count =
       v.blipCount < static_cast<std::size_t>(kMaxDots) ? v.blipCount : kMaxDots;
-  const lv_coord_t cx = g_disc_px / 2;
-  const lv_coord_t cy = g_disc_px / 2;
 
   for (std::size_t i = 0; i < count; ++i) {
     const auto& b = v.blips[i];
@@ -1082,160 +1540,84 @@ void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
       continue;
     }
 
-    const lv_coord_t x = static_cast<lv_coord_t>(b.offsetXMi * scale);
-    const lv_coord_t y = static_cast<lv_coord_t>(-b.offsetYMi * scale);
-    const lv_coord_t bx = cx + x;
-    const lv_coord_t by = cy + y;
-    uint32_t markColor = kDotColor;
-    if (selected) {
-      markColor = kSelectedColor;
-    } else {
-      switch (b.notable) {
-        case desk_display::AircraftNotable::Emergency:
-          markColor = desk_display::theme::kAlert;
-          break;
-        case desk_display::AircraftNotable::Military:
-          markColor = desk_display::theme::kMilitary;
-          break;
-        case desk_display::AircraftNotable::Interesting:
-          markColor = desk_display::theme::kAccent;
-          break;
-        case desk_display::AircraftNotable::None:
-        default:
-          break;
-      }
-    }
+    const char* cs = b.aircraft.callsign[0] != '\0' ? b.aircraft.callsign : "?";
+    const uint32_t layout = blip_layout_sig(v, i, vectors);
+    const uint32_t content = blip_content_sig(v, i, vectors);
+    TrafficSlot* slot = find_traffic_slot(cs);
 
-    BlipHitTarget& hit = g_hit_targets[i];
-    hit.valid = true;
-    hit.markX = originX + static_cast<float>(bx);
-    hit.markY = originY + static_cast<float>(by);
-    hit.hasTag = false;
-
-    if (vectors) {
-      lv_obj_t* star = lv_label_create(layer);
-      lv_label_set_text(star, "*");
-      lv_obj_set_style_text_font(star, &lv_font_montserrat_12, 0);
-      lv_obj_set_style_text_color(star, rgb(markColor), 0);
-      lv_obj_clear_flag(star, LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_clear_flag(star, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_align(star, LV_ALIGN_CENTER, x, y);
-
-      if (b.aircraft.hasTrack) {
-        const float rad = b.aircraft.trackDeg * kPi / 180.0f;
-        const float len = b.aircraft.hasSpeed
-                               ? clampf(b.aircraft.speedKt * kVectorLenScale,
-                                        kVectorLenMinPx, kVectorLenMaxPx)
-                               : kVectorLenDefaultPx;
-        const float dx = std::sin(rad) * len;
-        const float dy = -std::cos(rad) * len;
-
-        g_vector_points[i][0] = {bx, by};
-        g_vector_points[i][1] = {
-            static_cast<lv_coord_t>(bx + dx),
-            static_cast<lv_coord_t>(by + dy),
-        };
-
-        lv_obj_t* vec = lv_line_create(layer);
-        lv_obj_set_pos(vec, 0, 0);
-        lv_line_set_points(vec, g_vector_points[i], 2);
-        lv_obj_set_style_line_width(vec, selected ? 2 : 1, 0);
-        lv_obj_set_style_line_color(vec, rgb(markColor), 0);
-        lv_obj_set_style_line_rounded(vec, false, 0);
-        lv_obj_clear_flag(vec, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_clear_flag(vec, LV_OBJ_FLAG_SCROLLABLE);
-      }
-
-      using desk_display::RadarUnselectedLabel;
-      const auto label =
-          selected ? RadarUnselectedLabel::DenseTag
-                   : desk_display::radarUnselectedLabel(v.settings.declutter);
-
-      char tagLine2[24]{};
-      char tagLine3[28]{};
-      char tagLine4[8]{};
-      if (selected) {
-        desk_display::formatRadarTagLine2(tagLine2, sizeof(tagLine2), b.aircraft,
-                                          desk_display::RadarTagStyle::Full);
-        desk_display::formatRadarTagLine3(tagLine3, sizeof(tagLine3),
-                                          b.aircraft.type, b.aircraft.squawk,
-                                          b.notable);
-        desk_display::formatRadarTagLine4(tagLine4, sizeof(tagLine4), nullptr);
-      } else if (label == RadarUnselectedLabel::DenseTag) {
-        desk_display::formatRadarTagLine2(tagLine2, sizeof(tagLine2), b.aircraft,
-                                          desk_display::RadarTagStyle::Dense);
-      }
-
-      if (selected || label != RadarUnselectedLabel::None) {
-        const bool drawCs = true;
+    if (slot != nullptr && slot->root != nullptr && slot->layout_sig == layout) {
+      slot->keep = true;
+      if (slot->content_sig != content) {
+        update_blip_widgets(*slot, v, i, originX, originY, vectors);
+        slot->content_sig = content;
+      } else {
+        // Unchanged on-screen blip — refresh hit boxes only.
+        const float scale = radar_blip_scale(v.rangeMiles, g_plot_radius_px);
+        lv_coord_t x = 0;
+        lv_coord_t y = 0;
+        lv_coord_t bx = 0;
+        lv_coord_t by = 0;
+        blip_screen_xy(b, scale, &x, &y, &bx, &by);
+        using desk_display::RadarUnselectedLabel;
+        const auto label =
+            selected ? RadarUnselectedLabel::DenseTag
+                     : desk_display::radarUnselectedLabel(v.settings.declutter);
+        const bool drawTag =
+            vectors && (selected || label != RadarUnselectedLabel::None);
         const bool drawL2 =
             selected || label == RadarUnselectedLabel::DenseTag;
-        const bool hasLine4 = selected && tagLine4[0] != '\0';
-
-        // Mirror draw_blip_tag placement for hit boxes.
-        constexpr lv_coord_t kLeaderLen = 18;
-        const lv_coord_t kTagMargin = hasLine4 ? 60 : (selected ? 48 : 36);
-        const float tdx = static_cast<float>(cx - bx);
-        const float tdy = static_cast<float>(cy - by);
-        const float tdist = std::sqrt(tdx * tdx + tdy * tdy);
-        lv_coord_t leaderDx = 16;
-        lv_coord_t leaderDy = -16;
-        if (tdist > 1.0f) {
-          const bool nearRim =
-              bx < kTagMargin || by < kTagMargin ||
-              bx > g_disc_px - kTagMargin || by > g_disc_px - kTagMargin;
-          if (nearRim) {
-            leaderDx = static_cast<lv_coord_t>((tdx / tdist) * kLeaderLen);
-            leaderDy = static_cast<lv_coord_t>((tdy / tdist) * kLeaderLen);
-          }
+        fill_blip_hit(g_hit_targets[i], originX, originY, bx, by, selected,
+                      drawTag && (selected || drawL2), /*hasLine4=*/false);
+        if (!drawTag) {
+          g_hit_targets[i].hasTag = false;
         }
-        const lv_coord_t tagX = bx + leaderDx;
-        const lv_coord_t tagY = by + leaderDy;
-        const lv_coord_t line1Y = tagY - 12;
-        lv_coord_t tagBottomY = tagY;
-        if (selected) {
-          tagBottomY = hasLine4 ? static_cast<lv_coord_t>(tagY + 24 + 12)
-                                : static_cast<lv_coord_t>(tagY + 12 + 12);
-        } else if (drawL2) {
-          tagBottomY = tagY + 12;
-        }
-        hit.hasTag = true;
-        hit.tagX0 = originX + static_cast<float>(tagX);
-        hit.tagY0 = originY + static_cast<float>(line1Y);
-        hit.tagX1 = hit.tagX0 + 72.0f;
-        hit.tagY1 = originY + static_cast<float>(tagBottomY);
-
-        draw_blip_tag(layer, i, b.aircraft.callsign, tagLine2, tagLine3, tagLine4,
-                      markColor, selected, drawCs, drawL2, bx, by);
       }
-    } else {
-      const float ageFrac =
-          static_cast<float>(b.litAgeMs) /
-          static_cast<float>(desk_display::kRadarBlipFadeMs);
-      const float alpha = selected ? 1.0f : (1.0f - ageFrac * 0.88f);
-      const lv_opa_t opa = static_cast<lv_opa_t>(
-          clampf(alpha * 255.0f, selected ? 255.0f : 20.0f, 255.0f));
+      continue;
+    }
 
-      lv_coord_t dotPx = kDotPx;
-      if (selected) {
-        dotPx = kDotPx + 2;
-      } else if (b.notable == desk_display::AircraftNotable::Emergency) {
-        dotPx = kDotPx + 2;
+    if (slot == nullptr) {
+      slot = alloc_traffic_slot();
+      if (slot == nullptr) {
+        continue;
       }
+    }
 
-      lv_obj_t* dot = lv_obj_create(layer);
-      lv_obj_set_size(dot, dotPx, dotPx);
-      lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-      lv_obj_set_style_bg_color(dot, rgb(markColor), 0);
-      lv_obj_set_style_bg_opa(dot, opa, 0);
-      lv_obj_set_style_border_width(dot, selected ? 1 : 0, 0);
-      lv_obj_set_style_border_color(dot, rgb(kSelectedColor), 0);
-      lv_obj_set_style_pad_all(dot, 0, 0);
-      lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
-      lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_align(dot, LV_ALIGN_CENTER, x, y);
+    if (slot->root != nullptr) {
+      lv_obj_del(slot->root);
+      slot->root = nullptr;
+      slot->mark = nullptr;
+      slot->vector = nullptr;
+      slot->leader = nullptr;
+      slot->tag1 = nullptr;
+      slot->tag2 = nullptr;
+      slot->tag3 = nullptr;
+      slot->tag4 = nullptr;
+    }
+
+    std::snprintf(slot->callsign, sizeof(slot->callsign), "%s", cs);
+    slot->layout_sig = layout;
+    slot->content_sig = content;
+    slot->active = true;
+    slot->keep = true;
+    slot->root = make_blip_root(layer);
+    if (slot->root == nullptr) {
+      forget_traffic_slot(*slot, false);
+      continue;
+    }
+    create_blip_widgets(*slot, v, i, originX, originY, vectors);
+  }
+
+  for (int i = 0; i < kMaxDots; ++i) {
+    if (g_traffic_slots[i].active && !g_traffic_slots[i].keep) {
+      forget_traffic_slot(g_traffic_slots[i], true);
     }
   }
+}
+
+void build_traffic(lv_obj_t* layer, const desk_display::RadarView& v) {
+  // Full rebuild path (screen enter / disc recreate).
+  clear_traffic_slots(true);
+  sync_traffic(layer, v);
 }
 
 void clear_animate_cache() {
@@ -1250,6 +1632,8 @@ void clear_animate_cache() {
   g_disc_px = 0;
   g_plot_radius_px = 0.0f;
   clear_hit_targets();
+  // Roots die with the disc/parent clean — only drop slot metadata here.
+  clear_traffic_slots(false);
   g_cached_range = -1.0f;
   g_cached_center_lat = 0.0;
   g_cached_center_lon = 0.0;
@@ -1391,10 +1775,13 @@ bool radar_lvgl_animate_classic(lv_obj_t* parent,
     if (g_hdr) {
       char hdr[48];
       format_header(hdr, sizeof(hdr), v);
-      lv_label_set_text(g_hdr, hdr);
+      if (std::strcmp(lv_label_get_text(g_hdr), hdr) != 0) {
+        lv_label_set_text(g_hdr, hdr);
+      }
     }
-    lv_obj_clean(g_blips_layer);
-    build_traffic(g_blips_layer, v);
+    // Incremental per-callsign sync — a sweep paint must not tear down every
+    // other target's LVGL objects (that hitch is what stalled the beam).
+    sync_traffic(g_blips_layer, v);
     mark_traffic_built(v);
   }
 
