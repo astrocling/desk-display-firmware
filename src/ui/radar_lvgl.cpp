@@ -10,8 +10,14 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+
+#if defined(BOARD_HAS_PSRAM)
+#include <esp_heap_caps.h>
+#endif
 
 namespace desk_ui {
 namespace {
@@ -93,7 +99,7 @@ bool g_cached_settings_open = false;
 
 // Compact phosphor trail — enough to read motion without washing the map.
 constexpr float kTrailArcDeg = 12.0f;
-constexpr int kTrailSlices = 8;
+constexpr int kTrailSlices = 4;
 constexpr lv_coord_t kTrailLineWidth = 1;
 
 // Velocity vector length (px) scaled from ground speed (kt); mid length when
@@ -457,6 +463,18 @@ std::size_t g_cached_highway_count = 0;
 bool g_cached_has_static_sel = false;
 std::size_t g_cached_selected_static = 0;
 
+// Traffic layer: rebuild on paint/bind/selection/range — not every sweep tick.
+uint32_t g_cached_traffic_sig = 0;
+bool g_traffic_cache_valid = false;
+uint32_t g_cached_blip_ages[kMaxDots] = {};
+std::size_t g_cached_age_count = 0;
+
+// Flattened map overlay (one img) — avoids restroking ~1000 lv_line segs/frame.
+lv_img_dsc_t g_static_snap_dsc{};
+void* g_static_snap_buf = nullptr;
+uint32_t g_static_snap_cap = 0;
+lv_obj_t* g_static_snap_img = nullptr;
+
 constexpr int kMaxAirspaceSegs = 1280;
 lv_point_t g_airspace_seg_pts[kMaxAirspaceSegs][2];
 int g_airspace_seg_used = 0;
@@ -513,6 +531,167 @@ bool overlay_needs_rebuild(const desk_display::RadarView& v) {
          v.highwayCount != g_cached_highway_count ||
          v.hasStaticSelection != g_cached_has_static_sel ||
          v.selectedStaticIndex != g_cached_selected_static;
+}
+
+void mix_u32(uint32_t& h, uint32_t x) {
+  h ^= x;
+  h *= 16777619u;
+}
+
+/** Structural traffic fingerprint — ignores continuous phosphor aging. */
+uint32_t traffic_signature(const desk_display::RadarView& v) {
+  uint32_t h = 2166136261u;
+  mix_u32(h, static_cast<uint32_t>(v.blipCount));
+  mix_u32(h, v.hasSelection ? 1u : 0u);
+  mix_u32(h, static_cast<uint32_t>(v.selectedIndex));
+  mix_u32(h, static_cast<uint32_t>(v.rangeMiles * 10.0f));
+  mix_u32(h, static_cast<uint32_t>(v.settings.declutter));
+  mix_u32(h, v.settings.demoMode ? 1u : 0u);
+
+  const std::size_t count =
+      v.blipCount < static_cast<std::size_t>(kMaxDots) ? v.blipCount
+                                                       : kMaxDots;
+  for (std::size_t i = 0; i < count; ++i) {
+    const desk_display::RadarBlip& b = v.blips[i];
+    for (const char* p = b.aircraft.callsign; *p != '\0'; ++p) {
+      mix_u32(h, static_cast<uint8_t>(*p));
+    }
+    mix_u32(h, static_cast<uint32_t>(
+                   static_cast<int32_t>(b.offsetXMi * 50.0f) + 500000));
+    mix_u32(h, static_cast<uint32_t>(
+                   static_cast<int32_t>(b.offsetYMi * 50.0f) + 500000));
+    mix_u32(h, static_cast<uint32_t>(b.notable));
+    mix_u32(h, b.litAgeMs >= desk_display::kRadarBlipFadeMs ? 1u : 0u);
+    if (b.aircraft.hasTrack) {
+      mix_u32(h, static_cast<uint32_t>(b.aircraft.trackDeg));
+    }
+    if (b.aircraft.hasSpeed) {
+      mix_u32(h, static_cast<uint32_t>(b.aircraft.speedKt));
+    }
+    if (b.aircraft.hasAlt) {
+      mix_u32(h, static_cast<uint32_t>(b.aircraft.altFt));
+    }
+  }
+  return h;
+}
+
+bool traffic_paint_detected(const desk_display::RadarView& v) {
+  const std::size_t count =
+      v.blipCount < static_cast<std::size_t>(kMaxDots) ? v.blipCount
+                                                       : kMaxDots;
+  for (std::size_t i = 0; i < count && i < g_cached_age_count; ++i) {
+    if (v.blips[i].litAgeMs < g_cached_blip_ages[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void remember_blip_ages(const desk_display::RadarView& v) {
+  const std::size_t count =
+      v.blipCount < static_cast<std::size_t>(kMaxDots) ? v.blipCount
+                                                       : kMaxDots;
+  for (std::size_t i = 0; i < count; ++i) {
+    g_cached_blip_ages[i] = v.blips[i].litAgeMs;
+  }
+  g_cached_age_count = count;
+}
+
+void mark_traffic_built(const desk_display::RadarView& v) {
+  g_cached_traffic_sig = traffic_signature(v);
+  remember_blip_ages(v);
+  g_traffic_cache_valid = true;
+}
+
+bool traffic_needs_rebuild(const desk_display::RadarView& v) {
+  if (!g_traffic_cache_valid) {
+    return true;
+  }
+  if (traffic_signature(v) != g_cached_traffic_sig) {
+    return true;
+  }
+  return traffic_paint_detected(v);
+}
+
+void* snap_alloc(std::size_t bytes) {
+#if defined(BOARD_HAS_PSRAM)
+  void* p = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (p == nullptr) {
+    p = heap_caps_malloc(bytes, MALLOC_CAP_8BIT);
+  }
+  return p;
+#else
+  return std::malloc(bytes);
+#endif
+}
+
+void snap_free(void* p) {
+  if (p == nullptr) {
+    return;
+  }
+#if defined(BOARD_HAS_PSRAM)
+  heap_caps_free(p);
+#else
+  std::free(p);
+#endif
+}
+
+void release_static_snapshot_buf() {
+  g_static_snap_img = nullptr;
+  if (g_static_snap_buf != nullptr) {
+    snap_free(g_static_snap_buf);
+    g_static_snap_buf = nullptr;
+  }
+  g_static_snap_cap = 0;
+  std::memset(&g_static_snap_dsc, 0, sizeof(g_static_snap_dsc));
+}
+
+/**
+ * Replace hundreds of airspace/highway line objects with one image so each
+ * Classic sweep invalidate is a blit instead of restroking the map.
+ * Falls back to leaving the line children if snapshot fails (sim heap, etc.).
+ */
+bool flatten_static_overlay() {
+  if (!g_static_layer) {
+    return false;
+  }
+
+  lv_obj_update_layout(g_static_layer);
+  const lv_img_cf_t cf = LV_IMG_CF_TRUE_COLOR_ALPHA;
+  const uint32_t need = lv_snapshot_buf_size_needed(g_static_layer, cf);
+  if (need == 0) {
+    return false;
+  }
+
+  if (need > g_static_snap_cap || g_static_snap_buf == nullptr) {
+    void* fresh = snap_alloc(need);
+    if (fresh == nullptr) {
+      return false;
+    }
+    snap_free(g_static_snap_buf);
+    g_static_snap_buf = fresh;
+    g_static_snap_cap = need;
+  }
+
+  if (lv_snapshot_take_to_buf(g_static_layer, cf, &g_static_snap_dsc,
+                              g_static_snap_buf, g_static_snap_cap) != LV_RES_OK) {
+    return false;
+  }
+
+  lv_obj_clean(g_static_layer);
+  g_airspace_seg_used = 0;
+  g_highway_seg_used = 0;
+  g_static_snap_img = nullptr;
+
+  g_static_snap_img = lv_img_create(g_static_layer);
+  if (!g_static_snap_img) {
+    return false;
+  }
+  lv_img_set_src(g_static_snap_img, &g_static_snap_dsc);
+  lv_obj_set_pos(g_static_snap_img, 0, 0);
+  lv_obj_clear_flag(g_static_snap_img, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(g_static_snap_img, LV_OBJ_FLAG_SCROLLABLE);
+  return true;
 }
 
 uint32_t airspace_color(desk_display::AirspaceClass cls) {
@@ -713,6 +892,13 @@ void build_static_overlay(lv_obj_t* layer, const desk_display::RadarView& v) {
   build_airspace(layer, v);
   build_static_marks(layer, v);
   cache_overlay_state(v);
+}
+
+void rebuild_static_overlay(lv_obj_t* layer, const desk_display::RadarView& v) {
+  lv_obj_clean(layer);
+  g_static_snap_img = nullptr;
+  build_static_overlay(layer, v);
+  flatten_static_overlay();
 }
 
 void build_rings(lv_obj_t* disc) {
@@ -1072,6 +1258,10 @@ void clear_animate_cache() {
   g_cached_highway_count = 0;
   g_cached_has_static_sel = false;
   g_cached_selected_static = 0;
+  g_cached_traffic_sig = 0;
+  g_traffic_cache_valid = false;
+  g_cached_age_count = 0;
+  release_static_snapshot_buf();
   g_airspace_seg_used = 0;
   g_highway_seg_used = 0;
   for (int i = 0; i < kTrailSlices; ++i) {
@@ -1190,21 +1380,24 @@ bool radar_lvgl_animate_classic(lv_obj_t* parent,
     }
   }
 
-  if (g_hdr) {
-    char hdr[48];
-    format_header(hdr, sizeof(hdr), v);
-    lv_label_set_text(g_hdr, hdr);
-  }
-
+  // Sweep geometry only — keep this path cheap so Dial hits ~30 Hz.
   apply_trail_geometry(v.sweepAngleDeg);
 
   if (overlay_needs_rebuild(v)) {
-    lv_obj_clean(g_static_layer);
-    build_static_overlay(g_static_layer, v);
+    rebuild_static_overlay(g_static_layer, v);
   }
 
-  lv_obj_clean(g_blips_layer);
-  build_traffic(g_blips_layer, v);
+  if (traffic_needs_rebuild(v)) {
+    if (g_hdr) {
+      char hdr[48];
+      format_header(hdr, sizeof(hdr), v);
+      lv_label_set_text(g_hdr, hdr);
+    }
+    lv_obj_clean(g_blips_layer);
+    build_traffic(g_blips_layer, v);
+    mark_traffic_built(v);
+  }
+
   sync_settings_overlay(parent, v);
   return true;
 }
@@ -1233,8 +1426,9 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
   lv_obj_clear_flag(g_disc, LV_OBJ_FLAG_CLICKABLE);
 
   build_rings(g_disc);
-  build_sweep(g_disc, v.sweepAngleDeg);
 
+  // Map under sweep (design paint order): flatten to one image so Classic
+  // sweep invalidates don't restroke hundreds of airspace/highway lines.
   g_static_layer = lv_obj_create(g_disc);
   lv_obj_set_size(g_static_layer, g_disc_px, g_disc_px);
   lv_obj_set_pos(g_static_layer, 0, 0);
@@ -1243,7 +1437,9 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
   lv_obj_set_style_pad_all(g_static_layer, 0, 0);
   lv_obj_clear_flag(g_static_layer, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(g_static_layer, LV_OBJ_FLAG_CLICKABLE);
-  build_static_overlay(g_static_layer, v);
+  rebuild_static_overlay(g_static_layer, v);
+
+  build_sweep(g_disc, v.sweepAngleDeg);
 
   g_blips_layer = lv_obj_create(g_disc);
   lv_obj_set_size(g_blips_layer, g_disc_px, g_disc_px);
@@ -1257,6 +1453,7 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v) {
 
   g_parent = parent;
   g_built = true;
+  mark_traffic_built(v);
   sync_settings_overlay(parent, v);
 }
 

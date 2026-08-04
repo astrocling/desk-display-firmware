@@ -57,6 +57,8 @@ void radar_lvgl_build(lv_obj_t* parent, const desk_display::RadarView& v);
 
 /**
  * In-place Classic sweep + phosphor + dots update (no disc teardown).
+ * Sweep geometry updates every call; traffic/overlays rebuild only when
+ * their content changes.
  * Returns false if `parent` is not the currently built Classic disc (caller
  * should `lv_obj_clean` + `radar_lvgl_build`).
  */

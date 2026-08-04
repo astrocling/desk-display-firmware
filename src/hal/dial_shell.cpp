@@ -63,7 +63,7 @@ desk_display::AdsbPoller* g_adsb_poll = nullptr;
 desk_display::MapContextPoller* g_map_ctx_poll = nullptr;
 desk_display::MapContext* g_map_scratch = nullptr;
 desk_display::AircraftList* g_ac_scratch = nullptr;
-/** Cap Classic sweep UI updates — full overlay rebuild every ~5ms OOMs LVGL. */
+/** Cap Classic sweep UI updates — traffic rebuild every tick OOMs/starves LVGL. */
 uint32_t g_radar_ui_accum_ms = 0;
 constexpr uint32_t kRadarUiPeriodMs = 33;
 

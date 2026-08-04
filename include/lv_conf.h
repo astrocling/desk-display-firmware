@@ -74,4 +74,8 @@
 #define LV_USE_THEME_DEFAULT 1
 #define LV_THEME_DEFAULT_DARK 1
 
+/** Rasterize map overlays to one image so Classic sweep doesn't restroke
+ *  hundreds of airspace/highway lines every frame on the Dial. */
+#define LV_USE_SNAPSHOT 1
+
 #endif /* LV_CONF_H */
