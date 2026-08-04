@@ -1,50 +1,58 @@
-# Handoff — Dial bring-up (BLOCKED: Focused Radar crash)
+# Handoff — Dial bring-up (Radar A done → path C input)
 
 **Date:** 2026-08-03  
 **Repo:** `/Users/bruceclingan/Projects/desktop-display-firmware`  
-**Branch:** `main` (ahead of `origin` by several commits — push when ready)  
-**Spec/plan:** `docs/superpowers/specs/2026-08-03-dial-radar-port-design.md`, `docs/superpowers/plans/2026-08-03-dial-radar-port.md`
+**Branch:** `main` (ahead of `origin` by 6 — push when ready)  
+**HEAD:** `edba95b` — fix: stop Dial Radar crash and unblock Classic sweep  
+**Spec/plan (A done):** `docs/superpowers/specs/2026-08-03-dial-radar-port-design.md`, `docs/superpowers/plans/2026-08-03-dial-radar-port.md`  
+**Next track:** Dial Radar input (**path C**) — CST816 XY + gestures → select / Detail / settings
 
-## BLOCKED — Focused Radar immediate reboot
+## Done this session
 
-**Symptom:** Carousel → highlight Radar → center-tap to Focus → **immediate crash/reboot** back to boot `nav: Focused Clock`. Carousel Radar preview may be OK; Focused is not.
+1. **Focused / carousel Radar crash fixed** — `LoadProhibited` + `CORRUPTED` backtrace during blocking `map/context` TLS on 24KB loop stack.
+   - `ARDUINO_LOOP_STACK_SIZE` **24576 → 49152**
+   - Parse map/ADS-B into `lastGood_` (no ~24KB `MapContext` stack temp)
+2. **Sweep hitch fixed** — blocking HTTPS on the Arduino loop froze LVGL ~1s per ADS-B poll.
+   - New `src/net/http_async.*` FreeRTOS worker; Dial map/ADS-B use async slots
+   - Weather/Scores still sync `desk_net::httpGet` (fine off-Radar)
+   - Sweep UI refresh before poll kick; period **33ms**
+3. Pollers reuse one `bodyBuf_` (no 64KB alloc every async poll tick)
+4. On device: `map: bound` / `adsb: bound`, Focused Radar usable, sweep much smoother
 
-**Tried (still crashes):**
-1. Move `ScreenRadar` / `MapContextPoller` / bind scratch to **PSRAM** (`allocLarge` in `dial_shell`) — fixed LVGL boot OOM (RAM was ~84%).
-2. LVGL **custom allocator in PSRAM** (`-DLV_MEM_CUSTOM=1`, `include/lv_mem_psram.h`) — suspected 96KB internal LVGL pool vs 1000+ airspace `lv_line` objs.
-3. Throttle Radar UI refresh to 50ms; Serial breadcrumb `shell: build Radar mode=…`.
-
-**Not captured yet:** Guru Meditation / backtrace on the Focus crash (Serial monitor had no lines during one 90s capture — need reproduce with monitor already open).
-
-**Prime suspects for next chat:**
-1. **Stack overflow** on Focus: `rebuild_ui` (heavy `radar_lvgl_build` + airspace) and/or **blocking TLS** (`map-context` / adsb) on 24KB `ARDUINO_LOOP_STACK_SIZE` in the same tick.
-2. **Airspace/highway LVGL object storm** in `src/ui/radar_lvgl.cpp` (`kMaxAirspaceSegs=1280`) even with PSRAM LVGL heap — assert/`LoadProhibited` mid-build.
-3. Confirm `shell: build Radar mode=focused` prints before crash — if not, failure is earlier (Nav/rebuild).
-
-**Bisect ideas:**
-- Temporarily stub Focused Radar to `screen_stub_lvgl_build` / rings-only (no airspace/highways/HTTP) — if stable, re-enable pieces.
-- Poll map/adsb **only in Focused** (not carousel highlight) to avoid TLS while previewing.
-- Raise loop stack further **or** defer HTTP one tick after focus rebuild.
-- `pio device monitor` + exception decoder while reproducing.
-
-## Device status (otherwise)
+## Device status
 
 - **Board:** Waveshare ESP32-S3-Knob-Touch-LCD-1.8 (“Dial”)
-- Wi‑Fi STA + NVS; encoder (iot_knob GPIO **8/7**); CST816 CenterTap
-- Clock / Timezones / Weather / Sports: OK on device (Weather/Sports bind confirmed earlier)
-- Radar: wired in `dial_shell` (Classic + pollers) but **Focused unusable** until crash fixed
-- Boot OK after PSRAM moves: `display: ready` → `nav: Focused Clock` (RAM ~27% with LVGL-in-PSRAM)
+- Wi‑Fi STA + NVS; encoder (iot_knob GPIO **8/7**); CST816 **CenterTap only** today
+- Clock / Timezones / Weather / Sports: OK
+- Radar **path A complete:** Classic sweep, live adsb.lol + `/api/map/context`, Focused rotate = zoom, center tap = Nav only
+- Boot: `display: ready` → `nav: Focused Clock` (LVGL heap in PSRAM)
 
-## Input model (locked)
+## Known residual (not blocking path C)
+
+- Brief hitch when **map overlays rebuild** (first bind / zoom) — airspace/highway `lv_line` storm in `radar_lvgl`; separate from TLS stalls
+- Carousel Radar still polls map/ADS-B while highlighted (by design); async so it no longer reboots
+- `pio device monitor --filter esp32_exception_decoder` may need `pio run -e dial -t monitor` (filter ships with platform); raw `pio device monitor` often lacks it — PTY/`script` wrapper if agent has no TTY
+
+## Input model (locked until path C)
 
 - Ring has **no click**; knob click = **center tap**
-- Radar Dial A: rotate = zoom; center tap = Nav; no select/Detail/settings on Dial
+- Radar Dial A: rotate = zoom; center tap = Nav; **no** select / Detail / settings on Dial yet
 
-## What’s next (after Focused Radar works)
+## NEXT — Dial Radar input (path C)
 
-1. Verify Serial `map: bound` / `adsb: bound` on Focused Radar; carousel both ways without reboot
-2. Dial Radar input (path to C): CST816 XY + gestures
-3. Focused full-bleed visual pass
+**Goal:** Parity with sim Focused Radar gestures on Dial.
+
+1. Extend CST816 HAL beyond finger-down CenterTap → **XY**, double-tap, long-press (`src/hal/touch.*`)
+2. Wire Focused Radar only:
+   - Tap → `radar_lvgl_hit_blip` / `radar_lvgl_hit_static` → select
+   - Mode toggle Classic ↔ Detail (sim semantics)
+   - Settings overlay + `radar_lvgl_settings_hit`; center-tap-while-settings as sim
+3. Load/save `radar` **NVS** prefs when settings land
+4. Keep center-tap **Nav-owned** when settings closed (`dialShellOnCenterTap` → `Nav::on_center_tap`)
+
+**Do not** invent Dial-only Radar APIs — reuse existing `radar_lvgl_hit_*` / settings hooks.
+
+**Optional polish (if path C not started):** Focused full-bleed visual pass across screens; defer map overlay rebuild across frames to soften zoom hitch.
 
 ## Flash / tooling
 
@@ -52,18 +60,22 @@
 export PATH="$HOME/.platformio/penv311/bin:$PATH"
 cd /Users/bruceclingan/Projects/desktop-display-firmware
 pio run -e dial -t upload --upload-port /dev/cu.usbmodem*
-# Then open monitor BEFORE reproducing Focused Radar crash:
-pio device monitor --port /dev/cu.usbmodem* --filter esp32_exception_decoder
+# Prefer platform monitor (exception decoder):
+pio run -e dial -t monitor
+# Agent/no-TTY fallback:
+script -q /tmp/pio-monitor.log pio device monitor --port /dev/cu.usbmodem* --baud 115200 --filter time
 ```
 
 Native: `pio test -e native` · Sim: `pio run -e sim`
 
-## Architecture
+## Architecture (Dial Radar)
 
 - Pure logic: `lib/desk_display/` (`adsb_poll`, `map_context_poll`, `screen_radar`, …)
-- Shared LVGL: `src/ui/radar_lvgl.*` (heavy overlays)
-- Dial: `src/hal/dial_shell.*`, `src/hal/lv_mem_psram.*`, `src/net/http.*`
-- Recent fixes: `d74dcb4` (radar PSRAM state), `8b76ada` (LVGL PSRAM + UI throttle)
+- Shared LVGL: `src/ui/radar_lvgl.*`
+- Dial shell: `src/hal/dial_shell.*` — async map/ADS-B via `http_async`
+- Sync HTTP still: `src/net/http.*` (weather/scores + worker’s blocking GET)
+- PSRAM: radar state (`allocLarge`), LVGL custom alloc (`lv_mem_psram`), async slot bodies
+- Recent: `edba95b` (crash + async sweep), `8b76ada` (LVGL PSRAM), `d74dcb4` (radar PSRAM)
 
 ## Backend
 
