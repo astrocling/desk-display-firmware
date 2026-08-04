@@ -30,8 +30,10 @@ constexpr uint32_t kSweepColor = 0x00FF00;
 constexpr uint32_t kDotColor = 0x00FF00;
 constexpr uint32_t kSelectedColor = 0xFFFFFF;
 constexpr uint32_t kLeaderColor = 0x3D9CF0;
-/** Unselected tag/leader opacity — readable but quieter than selection. */
-constexpr lv_opa_t kTagDimOpa = LV_OPA_60;
+/** Unselected tag/leader opacity — full strength; selection uses thicker leader. */
+constexpr lv_opa_t kTagDimOpa = LV_OPA_COVER;
+/** Airspace stroke opacity — contextual, under aircraft tags. */
+constexpr lv_opa_t kAirspaceOpa = LV_OPA_50;
 
 constexpr uint32_t kAirspaceColorB = 0x3A6AA8;
 constexpr uint32_t kAirspaceColorC = 0xA83A7A;
@@ -818,6 +820,7 @@ lv_obj_t* add_airspace_segment(lv_obj_t* layer, lv_coord_t x0, lv_coord_t y0,
   lv_line_set_points(line, g_airspace_seg_pts[g_airspace_seg_used], 2);
   lv_obj_set_style_line_width(line, 1, 0);
   lv_obj_set_style_line_color(line, rgb(color), 0);
+  lv_obj_set_style_line_opa(line, kAirspaceOpa, 0);
   lv_obj_set_style_line_rounded(line, false, 0);
   // One LVGL line per edge (with style dash). Manual dash sub-segments used to
   // spawn hundreds of objects per ring and SIGSEGV inside lv_line_create.
