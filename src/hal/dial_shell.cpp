@@ -1,5 +1,6 @@
 #include "hal/dial_shell.hpp"
 
+#include "desk_display/adsb.hpp"
 #include "desk_display/adsb_poll.hpp"
 #include "desk_display/map_context_poll.hpp"
 #include "desk_display/nav.hpp"
@@ -15,6 +16,7 @@
 #include "desk_display/touch_gesture.hpp"
 #include "desk_display/weather_poll.hpp"
 
+#include "adsb_demo_fixture.h"
 #include "hal/display.hpp"
 #include "net/http.hpp"
 #include "net/http_async.hpp"
@@ -27,6 +29,8 @@
 #include "../ui/weather_lvgl.hpp"
 
 #include <Arduino.h>
+#include <cstdlib>
+#include <cstring>
 #include <esp_heap_caps.h>
 #include <lvgl.h>
 #include <new>
@@ -222,6 +226,22 @@ void persist_radar_prefs() {
   desk_display::saveRadarSettingsNvs(g_radar->settings());
 }
 
+void bind_demo_adsb() {
+  if (g_radar == nullptr || g_ac_scratch == nullptr) {
+    return;
+  }
+  char* buf = static_cast<char*>(malloc(adsb_demo_json_len + 1));
+  if (buf == nullptr) {
+    return;
+  }
+  memcpy(buf, adsb_demo_json, adsb_demo_json_len);
+  buf[adsb_demo_json_len] = '\0';
+  if (desk_display::parseAdsb(buf, *g_ac_scratch)) {
+    g_radar->bind(*g_ac_scratch);
+  }
+  free(buf);
+}
+
 void on_radar_tap(int16_t x, int16_t y) {
   if (g_radar == nullptr || g_body == nullptr) {
     return;
@@ -236,7 +256,9 @@ void on_radar_tap(int16_t x, int16_t y) {
           cur.showRoads != prev.showRoads ||
           cur.demoMode != prev.demoMode) {
         persist_radar_prefs();
-        // Demo bind in Task 5 when demoMode rises
+        if (cur.demoMode && !prev.demoMode) {
+          bind_demo_adsb();
+        }
       }
       refresh_content();
     }
@@ -322,6 +344,9 @@ bool dialShellInit() {
         desk_display::radarSettingsFactoryDefaults();
     desk_display::loadRadarSettingsNvs(prefs);
     g_radar->setSettings(prefs);
+    if (prefs.demoMode) {
+      bind_demo_adsb();
+    }
   }
 
   g_root = lv_obj_create(lv_scr_act());
@@ -495,7 +520,8 @@ void dialShellOnTick(uint32_t elapsed_ms) {
   }
 
   const bool radar_active = g_nav.active_screen() == Screen::Radar;
-  g_adsb_poll->setActive(radar_active);
+  const bool demo = g_radar->settings().demoMode;
+  g_adsb_poll->setActive(radar_active && !demo);
   g_map_ctx_poll->setActive(radar_active);
 
   if (radar_active) {
