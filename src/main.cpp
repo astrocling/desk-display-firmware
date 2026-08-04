@@ -3,6 +3,8 @@
  */
 #include <Arduino.h>
 
+#include "desk_display/touch_gesture.hpp"
+
 #include "hal/dial_shell.hpp"
 #include "hal/encoder.hpp"
 #include "hal/lvgl_port.hpp"
@@ -46,8 +48,12 @@ void loop() {
   if (rot != 0) {
     desk_hal::dialShellOnRotate(rot);
   }
-  if (desk_hal::touchPollCenterTap()) {
-    desk_hal::dialShellOnCenterTap();
+  desk_display::TouchGesture gest{};
+  if (desk_hal::touchPoll(gest)) {
+    // Task 3 wires shell; for now only DoubleTap → old center path so device stays usable mid-rebase:
+    if (gest.kind == desk_display::TouchGestureKind::DoubleTap) {
+      desk_hal::dialShellOnCenterTap();
+    }
   }
 
   desk_hal::dialShellOnTick(elapsed);
