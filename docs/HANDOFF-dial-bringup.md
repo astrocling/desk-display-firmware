@@ -1,11 +1,12 @@
-# Handoff — Dial bring-up (Radar A done → path C input)
+# Handoff — Dial bring-up (path C gesture remap shipped)
 
-**Date:** 2026-08-03  
+**Date:** 2026-08-04  
 **Repo:** `/Users/bruceclingan/Projects/desktop-display-firmware`  
-**Branch:** `main` (ahead of `origin` by 6 — push when ready)  
-**HEAD:** `edba95b` — fix: stop Dial Radar crash and unblock Classic sweep  
+**Branch:** `main` (ahead of `origin` — push when ready)  
+**HEAD:** `12668f0` — feat(radar): embed ADS-B demo fixture for Dial settings  
 **Spec/plan (A done):** `docs/superpowers/specs/2026-08-03-dial-radar-port-design.md`, `docs/superpowers/plans/2026-08-03-dial-radar-port.md`  
-**Next track:** Dial Radar input (**path C**) — CST816 XY + gestures → select / Detail / settings
+**Spec/plan (C shipped):** `docs/superpowers/specs/2026-08-04-dial-gesture-remap-design.md`, `docs/superpowers/plans/2026-08-04-dial-gesture-remap.md`  
+**Input target:** Dial firmware only — `src/sim/**` deprecated for input work (leave untouched)
 
 ## Done this session
 
@@ -22,9 +23,9 @@
 ## Device status
 
 - **Board:** Waveshare ESP32-S3-Knob-Touch-LCD-1.8 (“Dial”)
-- Wi‑Fi STA + NVS; encoder (iot_knob GPIO **8/7**); CST816 **CenterTap only** today
+- Wi‑Fi STA + NVS; encoder (iot_knob GPIO **8/7**); CST816 **XY + Tap / DoubleTap / LongPress** (`TouchGestureDetector` → `dialShellOnTouch`)
 - Clock / Timezones / Weather / Sports: OK
-- Radar **path A complete:** Classic sweep, live adsb.lol + `/api/map/context`, Focused rotate = zoom, center tap = Nav only
+- Radar **path A + C complete:** Classic sweep, live adsb.lol + `/api/map/context`, Focused rotate = zoom; **double-tap** = Nav toggle; tap = select; long-press = settings + NVS + demo
 - Boot: `display: ready` → `nav: Focused Clock` (LVGL heap in PSRAM)
 
 ## Known residual (not blocking path C)
@@ -33,26 +34,17 @@
 - Carousel Radar still polls map/ADS-B while highlighted (by design); async so it no longer reboots
 - `pio device monitor --filter esp32_exception_decoder` may need `pio run -e dial -t monitor` (filter ships with platform); raw `pio device monitor` often lacks it — PTY/`script` wrapper if agent has no TTY
 
-## Input model (locked until path C)
+## Input model (path C shipped)
 
-- Ring has **no click**; knob click = **center tap**
-- Radar Dial A: rotate = zoom; center tap = Nav; **no** select / Detail / settings on Dial yet
+- Ring has **no click**; knob click = **double-tap** → `Nav::on_center_tap()` (Carousel ↔ Focused)
+- Carousel single tap ignored; Focused Radar: tap = hit-test select; long-press = settings; settings close via Done or double-tap
+- **Not in this pass:** Classic ↔ Detail toggle; Focused Sports/Weather/TZ tap actions
+- Sim (`pio run -e sim`) unchanged — use Dial for input verification
 
-## NEXT — Dial Radar input (path C)
+## NEXT — polish / verification
 
-**Goal:** Parity with sim Focused Radar gestures on Dial.
-
-1. Extend CST816 HAL beyond finger-down CenterTap → **XY**, double-tap, long-press (`src/hal/touch.*`)
-2. Wire Focused Radar only:
-   - Tap → `radar_lvgl_hit_blip` / `radar_lvgl_hit_static` → select
-   - Mode toggle Classic ↔ Detail (sim semantics)
-   - Settings overlay + `radar_lvgl_settings_hit`; center-tap-while-settings as sim
-3. Load/save `radar` **NVS** prefs when settings land
-4. Keep center-tap **Nav-owned** when settings closed (`dialShellOnCenterTap` → `Nav::on_center_tap`)
-
-**Do not** invent Dial-only Radar APIs — reuse existing `radar_lvgl_hit_*` / settings hooks.
-
-**Optional polish (if path C not started):** Focused full-bleed visual pass across screens; defer map overlay rebuild across frames to soften zoom hitch.
+1. **On-device checklist** — `docs/superpowers/plans/2026-08-04-dial-gesture-remap.md` Task 7 (gesture matrix + touch aim)
+2. **Optional:** Focused full-bleed visual pass; defer map overlay rebuild across frames to soften zoom hitch
 
 ## Flash / tooling
 
@@ -75,7 +67,7 @@ Native: `pio test -e native` · Sim: `pio run -e sim`
 - Dial shell: `src/hal/dial_shell.*` — async map/ADS-B via `http_async`
 - Sync HTTP still: `src/net/http.*` (weather/scores + worker’s blocking GET)
 - PSRAM: radar state (`allocLarge`), LVGL custom alloc (`lv_mem_psram`), async slot bodies
-- Recent: `edba95b` (crash + async sweep), `8b76ada` (LVGL PSRAM), `d74dcb4` (radar PSRAM)
+- Recent: `12668f0` (demo fixture), `31132a3` (tap select + settings NVS), `cd1255a` (double-tap Nav), `edba95b` (crash + async sweep)
 
 ## Backend
 

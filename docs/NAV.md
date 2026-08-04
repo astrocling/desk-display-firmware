@@ -20,8 +20,8 @@ The encoder has **no push button**. Shell events:
 | Event | Shell behavior |
 |-------|----------------|
 | `Rotate(delta)` | Carousel: cycle highlight. Focused: idle reset only (screen owns rotate). |
-| `CenterTap` | Plan’s “knob click” (unchanged): Carousel → enter Focused on highlight; Focused → back to Carousel |
-| `Tap` / `DoubleTap` / `LongPress` | Reset idle timer (detail actions are screen-owned) |
+| `DoubleTap` (Dial) | Knob-click substitute: Carousel → Focused on highlight; Focused → Carousel. (`Nav::on_center_tap()` still implements the toggle.) |
+| `Tap` / `LongPress` | Idle reset; Focused Radar owns select / settings (Dial). Carousel Tap ignored. |
 
 ## Idle / home
 
@@ -41,7 +41,7 @@ In Carousel only, the shell owns a browse frame around a circular **preview host
 |---------|---------|
 | Title (top) | Highlighted screen name (`CLOCK`, `WEATHER`, `RADAR`, …) |
 | Dots (bottom) | One per screen in carousel order; filled dot = highlight |
-| Preview (inset) | Live render of the highlighted screen; **non-interactive** (rotate cycles highlight; center-tap focuses) |
+| Preview (inset) | Live render of the highlighted screen; **non-interactive** (rotate cycles highlight; double-tap focuses) |
 
 Focused mode hides the carousel frame and mounts the same screen renderers full-bleed on `focused_host_` (360×360).
 
