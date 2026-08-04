@@ -50,10 +50,7 @@ void loop() {
   }
   desk_display::TouchGesture gest{};
   if (desk_hal::touchPoll(gest)) {
-    // Task 3 wires shell; for now only DoubleTap → old center path so device stays usable mid-rebase:
-    if (gest.kind == desk_display::TouchGestureKind::DoubleTap) {
-      desk_hal::dialShellOnCenterTap();
-    }
+    desk_hal::dialShellOnTouch(gest);
   }
 
   desk_hal::dialShellOnTick(elapsed);

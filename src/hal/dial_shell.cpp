@@ -11,6 +11,7 @@
 #include "desk_display/screen_timezones.hpp"
 #include "desk_display/screen_weather.hpp"
 #include "desk_display/theme.hpp"
+#include "desk_display/touch_gesture.hpp"
 #include "desk_display/weather_poll.hpp"
 
 #include "hal/display.hpp"
@@ -304,6 +305,11 @@ void dialShellOnRotate(int8_t delta) {
   if (delta == 0) {
     return;
   }
+  if (g_nav.mode() == desk_display::NavMode::Focused && g_radar != nullptr &&
+      g_nav.focused() == desk_display::Screen::Radar &&
+      g_radar->settingsOpen()) {
+    return;  // frozen
+  }
   if (g_nav.mode() == desk_display::NavMode::Carousel) {
     g_nav.on_rotate(delta);
   } else {
@@ -318,7 +324,54 @@ void dialShellOnRotate(int8_t delta) {
   }
 }
 
-void dialShellOnCenterTap() { g_nav.on_center_tap(); }
+void dialShellOnTouch(const desk_display::TouchGesture& g) {
+  using desk_display::NavMode;
+  using desk_display::Screen;
+  using desk_display::TouchGestureKind;
+
+  if (g.kind == TouchGestureKind::None) {
+    return;
+  }
+
+  const bool radar_settings =
+      g_nav.mode() == NavMode::Focused &&
+      g_nav.focused() == Screen::Radar && g_radar != nullptr &&
+      g_radar->settingsOpen();
+
+  if (g.kind == TouchGestureKind::DoubleTap) {
+    if (radar_settings) {
+      g_radar->closeSettings();
+      g_nav.idle_reset();
+      refresh_content();
+      return;
+    }
+    if (g_nav.mode() == NavMode::Focused &&
+        g_nav.focused() == Screen::Radar && g_radar != nullptr) {
+      g_radar->revertTempCenter();
+    }
+    g_nav.on_center_tap();
+    rebuild_ui_for_active();
+    return;
+  }
+
+  if (g.kind == TouchGestureKind::Tap) {
+    if (g_nav.mode() != NavMode::Focused) {
+      return;  // Carousel: ignore
+    }
+    // Task 4 fills Radar tap; for now idle_reset only if non-radar
+    g_nav.idle_reset();
+    return;
+  }
+
+  if (g.kind == TouchGestureKind::LongPress) {
+    if (g_nav.mode() != NavMode::Focused) {
+      return;
+    }
+    g_nav.idle_reset();
+    // Task 4 opens settings
+    return;
+  }
+}
 
 void dialShellOnTick(uint32_t elapsed_ms) {
   using desk_display::Screen;
