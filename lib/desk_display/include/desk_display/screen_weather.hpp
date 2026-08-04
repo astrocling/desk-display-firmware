@@ -11,18 +11,6 @@ namespace desk_display {
 /** Scrub index for live "now" (current conditions, not an hourly slot). */
 constexpr int kWeatherScrubNow = -1;
 
-/** Visible hourly strip slot count on the dial. */
-constexpr std::size_t kWeatherStripSlots = 5;
-
-/** One slot in the centered hourly strip window. */
-struct WeatherStripSlot {
-  bool valid;
-  bool selected;
-  float temp;
-  WeatherIconId icon;
-  char hourDigit[8];
-};
-
 /** Snapshot for LVGL (or tests) to render the weather screen. */
 struct WeatherScreenView {
   bool ready;
@@ -43,9 +31,6 @@ struct WeatherScreenView {
   const WeatherHourly* hourly;
   std::size_t hourlyCount;
 
-  WeatherStripSlot strip[kWeatherStripSlots];
-  std::size_t stripCount;
-
   bool alertBadge;
   bool alertDetailOpen;
   const char* alertSeverity;
@@ -54,7 +39,8 @@ struct WeatherScreenView {
 
 /**
  * Weather screen view-model (no LVGL).
- * Bind a parsed Weather model; rotate scrubs the hourly strip; snap returns to now.
+ * Bind a parsed Weather model; rotate scrubs hourly forecast (center display);
+ * snap returns to now.
  */
 class WeatherScreen {
  public:

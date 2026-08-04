@@ -70,7 +70,7 @@ void test_scrub_hourly_updates_center(void) {
   TEST_ASSERT_FLOAT_WITHIN(0.05f, w.hourly[1].temp, v.displayTemp);
   TEST_ASSERT_EQUAL(w.hourly[1].code, v.weatherCode);
 
-  // Clamp at end of strip
+  // Clamp at end of hourly series
   g_screen.onRotate(static_cast<int>(w.hourlyCount) + 10);
   TEST_ASSERT_EQUAL(static_cast<int>(w.hourlyCount) - 1, g_screen.scrubIndex());
 }
@@ -190,34 +190,6 @@ void test_idle_settle_snaps_and_closes_alert(void) {
   TEST_ASSERT_FALSE(g_screen.alertDetailOpen());
 }
 
-void test_strip_window_now_and_scrub(void) {
-  TEST_ASSERT_TRUE(loadFixture("weather.json", g_buf, sizeof(g_buf)));
-  Weather w{};
-  TEST_ASSERT_TRUE(parseWeather(g_buf, w));
-  TEST_ASSERT_TRUE(w.hourlyCount >= 5);
-  g_screen.bind(w);
-
-  WeatherScreenView v = g_screen.view();
-  TEST_ASSERT_EQUAL(5, static_cast<int>(v.stripCount));
-  TEST_ASSERT_TRUE(v.strip[0].valid);
-  TEST_ASSERT_FALSE(v.strip[0].selected);  // Now: no hourly slot selected
-  TEST_ASSERT_FLOAT_WITHIN(0.05f, w.hourly[0].temp, v.strip[0].temp);
-
-  g_screen.onRotate(1);  // scrub index 0
-  v = g_screen.view();
-  TEST_ASSERT_TRUE(v.strip[0].selected);
-  TEST_ASSERT_FALSE(v.strip[1].selected);
-  TEST_ASSERT_EQUAL_STRING("6", v.strip[0].hourDigit);
-
-  // Jump near end — window clamps, last slot selected
-  g_screen.onRotate(static_cast<int>(w.hourlyCount) + 10);
-  v = g_screen.view();
-  TEST_ASSERT_EQUAL(5, static_cast<int>(v.stripCount));
-  TEST_ASSERT_TRUE(v.strip[4].selected);
-  const std::size_t last = w.hourlyCount - 1;
-  TEST_ASSERT_FLOAT_WITHIN(0.05f, w.hourly[last].temp, v.strip[4].temp);
-}
-
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -231,7 +203,6 @@ int main(int argc, char** argv) {
   RUN_TEST(test_alert_present_open_detail);
   RUN_TEST(test_clear_returns_not_ready);
   RUN_TEST(test_when_label_current_and_hourly);
-  RUN_TEST(test_strip_window_now_and_scrub);
   RUN_TEST(test_idle_settle_snaps_and_closes_alert);
   return UNITY_END();
 }
