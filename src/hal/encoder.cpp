@@ -10,7 +10,8 @@ namespace desk_hal {
 namespace {
 
 // Invert so clockwise (viewer-facing, USB-at-top desk mount) maps to positive
-// ticks (next screen / later hours). Display MADCTL is also 180° for that mount.
+// ticks for focused screens (zoom out / later hours). Display MADCTL is also
+// 180° for that mount. Carousel browse flips the sign again in dial_shell.
 constexpr bool kEncoderInvert = true;
 
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;

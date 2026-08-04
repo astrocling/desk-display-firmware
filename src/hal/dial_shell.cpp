@@ -393,7 +393,10 @@ void dialShellOnRotate(int8_t delta) {
     return;  // frozen
   }
   if (g_nav.mode() == desk_display::NavMode::Carousel) {
-    g_nav.on_rotate(delta);
+    // kEncoderInvert makes CW = + for focused zoom/scrub (Radar, etc.). Carousel
+    // highlight still travels the wrong way on the USB-at-top dial, so flip here
+    // only — Nav keeps positive = next.
+    g_nav.on_rotate(static_cast<int8_t>(-delta));
   } else {
     on_rotate_focused(delta);
     g_nav.idle_reset();
